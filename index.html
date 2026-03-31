@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Hiking Trail Map</title>
+    
+    <!-- MapLibre GL JS CSS & JS -->
+    <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
+    <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            touch-action: pan-x pan-y; /* Allow touch gestures but prevent pull-to-refresh */
+        }
+        
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        /* UI Controls Container */
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            pointer-events: none;
+            z-index: 10;
+        }
+        
+        /* Elevation Card */
+        .elevation-card {
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 12px 16px;
+            color: white;
+            font-weight: 500;
+            pointer-events: none;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            min-width: 100px;
+        }
+        
+        .elevation-label {
+            font-size: 12px;
+            opacity: 0.8;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+        
+        .elevation-value {
+            font-size: 24px;
+            font-weight: 600;
+            line-height: 1;
+        }
+        
+        .elevation-unit {
+            font-size: 14px;
+            font-weight: normal;
+            margin-left: 4px;
+        }
+        
+        /* Compass */
+        .compass-container {
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-radius: 60px;
+            padding: 12px;
+            pointer-events: auto;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+        
+        .compass-container:active {
+            transform: scale(0.95);
+        }
+        
+        .compass {
+            width: 48px;
+            height: 48px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .compass-needle {
+            width: 4px;
+            height: 32px;
+            background: linear-gradient(180deg, #ff4444 0%, #ff4444 50%, #ffffff 50%, #ffffff 100%);
+            position: absolute;
+            top: 8px;
+            left: 22px;
+            transform-origin: center 24px;
+            border-radius: 2px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+        }
+        
+        .compass-center {
+            width: 12px;
+            height: 12px;
+            background: #ff4444;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 2;
+            border: 2px solid white;
+        }
+        
+        .compass-ring {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        .compass-north-mark {
+            position: absolute;
+            top: 2px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ff4444;
+            font-size: 10px;
+            font-weight: bold;
+        }
+        
+        /* Rotation Lock Button (hidden until rotation is active) */
+        .lock-button {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(10px);
+            border-radius: 40px;
+            padding: 10px;
+            pointer-events: auto;
+            cursor: pointer;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            z-index: 10;
+            transition: all 0.2s ease;
+        }
+        
+        .lock-button:active {
+            transform: scale(0.95);
+        }
+        
+        .lock-button svg {
+            width: 24px;
+            height: 24px;
+            fill: white;
+            opacity: 0.9;
+        }
+        
+        /* Loading Overlay */
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            transition: opacity 0.3s ease;
+        }
+        
+        .loading-content {
+            text-align: center;
+            color: white;
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Info Message */
+        .info-message {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 10px 16px;
+            color: white;
+            font-size: 13px;
+            text-align: center;
+            pointer-events: none;
+            z-index: 10;
+            transition: opacity 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        /* Hide elements when not needed */
+        .hidden {
+            display: none;
+        }
+        
+        /* Make map controls touch-friendly */
+        .maplibregl-ctrl-group {
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        }
+        
+        .maplibregl-ctrl button {
+            width: 40px !important;
+            height: 40px !important;
+        }
+        
+        @media (max-width: 768px) {
+            .elevation-value {
+                font-size: 20px;
+            }
+            
+            .compass {
+                width: 40px;
+                height: 40px;
+            }
+            
+            .compass-needle {
+                left: 18px;
+                height: 28px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    
+    <div class="controls">
+        <div class="elevation-card">
+            <div class="elevation-label">ELEVATION</div>
+            <div class="elevation-value">
+                <span id="elevation">---</span>
+                <span class="elevation-unit">ft</span>
+            </div>
+        </div>
+        <div class="compass-container" id="compassButton">
+            <div class="compass">
+                <div class="compass-ring"></div>
+                <div class="compass-north-mark">N</div>
+                <div class="compass-needle" id="compassNeedle"></div>
+                <div class="compass-center"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="lock-button" id="lockButton">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2C8.13 2 5 5.13 5 9v4c0 .83.67 1.5 1.5 1.5S8 13.83 8 13V9c0-2.76 2.24-5 5-5s5 2.24 5 5v4c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V9c0-3.87-3.13-7-7-7z"/>
+            <path d="M12 12c-1.1 0-2 .9-2 2v4c0 1.1.9 2 2 2s2-.9 2-2v-4c0-1.1-.9-2-2-2z"/>
+        </svg>
+    </div>
+    
+    <div class="info-message" id="infoMessage">
+        🧭 Tap compass to reset north-up
+    </div>
+    
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-content">
+            <div class="spinner"></div>
+            <div>Loading trail map...</div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize map
+        const map = new maplibregl.Map({
+            container: 'map',
+            style: 'https://tiles.stadiamaps.com/styles/outdoors.json', // Topographic style good for hiking
+            center: [-120.0, 37.5], // Will be updated when trails load
+            zoom: 14,
+            pitch: 0,
+            bearing: 0,
+            antialias: true
+        });
+        
+        // Global variables
+        let userMarker = null;
+        let userAccuracyCircle = null;
+        let currentLocation = null;
+        let currentHeading = null;
+        let watchId = null;
+        let isUserInteracting = false;
+        let interactionTimeout = null;
+        let isRotationLocked = false;
+        let lastKnownBearing = 0;
+        let trailsLayerAdded = false;
+        let poisLayerAdded = false;
+        let trailBounds = null;
+        
+        // DOM elements
+        const elevationEl = document.getElementById('elevation');
+        const compassNeedle = document.getElementById('compassNeedle');
+        const compassButton = document.getElementById('compassButton');
+        const lockButton = document.getElementById('lockButton');
+        const infoMessage = document.getElementById('infoMessage');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        
+        // Helper: Convert degrees to radians
+        function degToRad(deg) {
+            return deg * Math.PI / 180;
+        }
+        
+        // Helper: Calculate distance between two points (Haversine)
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371000; // meters
+            const dLat = degToRad(lat2 - lat1);
+            const dLon = degToRad(lon2 - lon1);
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(degToRad(lat1)) * Math.cos(degToRad(lat2)) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+        
+        // Update compass UI
+        function updateCompass(headingDegrees) {
+            // Rotate needle relative to north (0 degrees = north)
+            compassNeedle.style.transform = `rotate(${headingDegrees}deg)`;
+        }
+        
+        // Update map rotation based on heading (if not locked)
+        function updateMapRotation(heading) {
+            if (!isRotationLocked && currentLocation && !isUserInteracting) {
+                map.setBearing(heading);
+                lastKnownBearing = heading;
+            }
+        }
+        
+        // Reset to north-up
+        function resetToNorthUp() {
+            isRotationLocked = false;
+            lockButton.style.opacity = '0.6';
+            map.setBearing(0);
+            lastKnownBearing = 0;
+            updateCompass(0);
+            
+            // Show temporary message
+            infoMessage.style.opacity = '1';
+            infoMessage.textContent = '🗺️ Map set to north-up';
+            setTimeout(() => {
+                if (infoMessage.textContent === '🗺️ Map set to north-up') {
+                    infoMessage.style.opacity = '0';
+                }
+            }, 2000);
+        }
+        
+        // Toggle rotation lock
+        function toggleRotationLock() {
+            isRotationLocked = !isRotationLocked;
+            if (isRotationLocked) {
+                lockButton.style.opacity = '1';
+                infoMessage.style.opacity = '1';
+                infoMessage.textContent = '🔒 Map rotation locked to heading';
+                setTimeout(() => {
+                    if (infoMessage.textContent === '🔒 Map rotation locked to heading') {
+                        infoMessage.style.opacity = '0';
+                    }
+                }, 2000);
+            } else {
+                lockButton.style.opacity = '0.6';
+                // Re-apply current heading
+                if (currentHeading !== null) {
+                    updateMapRotation(currentHeading);
+                }
+                infoMessage.style.opacity = '1';
+                infoMessage.textContent = '🔓 Map rotation unlocked';
+                setTimeout(() => {
+                    if (infoMessage.textContent === '🔓 Map rotation unlocked') {
+                        infoMessage.style.opacity = '0';
+                    }
+                }, 2000);
+            }
+        }
+        
+        // Auto-recenter to user location after inactivity
+        function resetInteractionTimer() {
+            if (interactionTimeout) clearTimeout(interactionTimeout);
+            isUserInteracting = true;
+            
+            interactionTimeout = setTimeout(() => {
+                isUserInteracting = false;
+                if (currentLocation && !isRotationLocked && currentHeading !== null) {
+                    // Fly back to user location
+                    map.flyTo({
+                        center: [currentLocation.lng, currentLocation.lat],
+                        bearing: currentHeading,
+                        zoom: map.getZoom(),
+                        duration: 1000,
+                        essential: true
+                    });
+                } else if (currentLocation) {
+                    map.flyTo({
+                        center: [currentLocation.lng, currentLocation.lat],
+                        zoom: map.getZoom(),
+                        duration: 1000,
+                        essential: true
+                    });
+                }
+            }, 3000);
+        }
+        
+        // Create or update user location marker
+        function updateUserLocation(lat, lng, heading, accuracy) {
+            if (!userMarker) {
+                // Create custom blue dot marker
+                const el = document.createElement('div');
+                el.className = 'user-location-marker';
+                el.style.width = '24px';
+                el.style.height = '24px';
+                el.style.backgroundColor = '#007AFF';
+                el.style.borderRadius = '50%';
+                el.style.border = '3px solid white';
+                el.style.boxShadow = '0 0 0 2px rgba(0, 122, 255, 0.3)';
+                el.style.position = 'relative';
+                
+                // Add direction indicator
+                const directionEl = document.createElement('div');
+                directionEl.style.position = 'absolute';
+                directionEl.style.bottom = '100%';
+                directionEl.style.left = '50%';
+                directionEl.style.transform = 'translateX(-50%)';
+                directionEl.style.width = '0';
+                directionEl.style.height = '0';
+                directionEl.style.borderLeft = '6px solid transparent';
+                directionEl.style.borderRight = '6px solid transparent';
+                directionEl.style.borderBottom = '12px solid #007AFF';
+                directionEl.style.marginBottom = '2px';
+                el.appendChild(directionEl);
+                
+                userMarker = new maplibregl.Marker({ element: el, rotationAlignment: 'map' })
+                    .setLngLat([lng, lat])
+                    .addTo(map);
+            } else {
+                userMarker.setLngLat([lng, lat]);
+            }
+            
+            // Update direction indicator rotation
+            if (heading !== null && userMarker.getElement().children[0]) {
+                userMarker.getElement().children[0].style.transform = `translateX(-50%) rotate(${heading}deg)`;
+                userMarker.getElement().children[0].style.transformOrigin = 'center bottom';
+            }
+            
+            // Update accuracy circle
+            if (userAccuracyCircle) {
+                userAccuracyCircle.remove();
+            }
+            
+            if (accuracy && accuracy < 500) { // Only show if accuracy is reasonable
+                userAccuracyCircle = new maplibregl.CircleLayer({
+                    id: `accuracy-${Date.now()}`,
+                    type: 'circle',
+                    paint: {
+                        'circle-radius': accuracy / (map.getZoom() * 2),
+                        'circle-color': '#007AFF',
+                        'circle-opacity': 0.2,
+                        'circle-stroke-width': 1,
+                        'circle-stroke-color': '#007AFF'
+                    }
+                });
+                // Note: Adding dynamic circle layers is complex; using simpler approach
+                // We'll use a circle marker instead
+                const accuracyEl = document.createElement('div');
+                accuracyEl.style.width = `${accuracy / 2}px`;
+                accuracyEl.style.height = `${accuracy / 2}px`;
+                accuracyEl.style.borderRadius = '50%';
+                accuracyEl.style.backgroundColor = 'rgba(0, 122, 255, 0.2)';
+                accuracyEl.style.border = '1px solid rgba(0, 122, 255, 0.5)';
+                accuracyEl.style.position = 'absolute';
+                accuracyEl.style.top = '50%';
+                accuracyEl.style.left = '50%';
+                accuracyEl.style.transform = 'translate(-50%, -50%)';
+                
+                // For simplicity, we'll skip dynamic accuracy circles
+            }
+            
+            // Center map on first location
+            if (!currentLocation) {
+                map.flyTo({
+                    center: [lng, lat],
+                    zoom: 17,
+                    bearing: heading || 0,
+                    duration: 1000
+                });
+            }
+        }
+        
+        // Load GeoJSON data
+        async function loadTrailData() {
+            try {
+                // Update this path to match your GeoJSON file location
+                const response = await fetch('data/trails.geojson');
+                if (!response.ok) throw new Error('Failed to load trail data');
+                const geojson = await response.json();
+                
+                // Calculate bounds from GeoJSON
+                const bounds = new maplibregl.LngLatBounds();
+                geojson.features.forEach(feature => {
+                    if (feature.geometry.type === 'LineString') {
+                        feature.geometry.coordinates.forEach(coord => {
+                            bounds.extend([coord[0], coord[1]]);
+                        });
+                    } else if (feature.geometry.type === 'Point') {
+                        bounds.extend([feature.geometry.coordinates[0], feature.geometry.coordinates[1]]);
+                    } else if (feature.geometry.type === 'MultiLineString') {
+                        feature.geometry.coordinates.forEach(line => {
+                            line.forEach(coord => {
+                                bounds.extend([coord[0], coord[1]]);
+                            });
+                        });
+                    }
+                });
+                
+                trailBounds = bounds;
+                
+                // Add trails source and layer
+                map.addSource('trails', {
+                    type: 'geojson',
+                    data: geojson,
+                    lineMetrics: true
+                });
+                
+                // Add trails layer with styling
+                map.addLayer({
+                    id: 'trails',
+                    type: 'line',
+                    source: 'trails',
+                    paint: {
+                        'line-color': [
+                            'match',
+                            ['get', 'stroke'],  // Try to use Caltopo's stroke color
+                            '#000000', '#000000',
+                            '#FF0000', '#FF0000',
+                            '#00FF00', '#00FF00',
+                            '#0000FF', '#0000FF',
+                            '#FFFF00', '#FFFF00',
+                            '#FF00FF', '#FF00FF',
+                            '#00FFFF', '#00FFFF',
+                            '#800000', '#800000',
+                            '#008000', '#008000',
+                            '#000080', '#000080',
+                            '#808000', '#808000',
+                            '#800080', '#800080',
+                            '#008080', '#008080',
+                            '#4CAF50', '#4CAF50',  // Default green for trails
+                            '#FF6B6B', '#FF6B6B',  // Default red
+                            '#4A90E2', '#4A90E2',  // Default blue
+                            '#FFD93D', '#FFD93D',  // Default yellow
+                            '#6B4E71', '#6B4E71',  // Default purple
+                            '#2C3E50'  // Default fallback
+                        ],
+                        'line-width': 4,
+                        'line-opacity': 0.9,
+                        'line-blur': 0.5
+                    }
+                });
+                
+                // Add POIs layer
+                const poiFeatures = geojson.features.filter(f => 
+                    f.geometry.type === 'Point' || 
+                    (f.properties && f.properties.poi_type)
+                );
+                
+                if (poiFeatures.length > 0) {
+                    map.addSource('pois', {
+                        type: 'geojson',
+                        data: {
+                            type: 'FeatureCollection',
+                            features: poiFeatures
+                        }
+                    });
+                    
+                    map.addLayer({
+                        id: 'pois',
+                        type: 'circle',
+                        source: 'pois',
+                        paint: {
+                            'circle-radius': 8,
+                            'circle-color': '#FF6B35',
+                            'circle-stroke-width': 2,
+                            'circle-stroke-color': '#FFFFFF'
+                        }
+                    });
+                    
+                    // Add popups for POIs
+                    map.on('click', 'pois', (e) => {
+                        const coordinates = e.features[0].geometry.coordinates.slice();
+                        const name = e.features[0].properties.name || e.features[0].properties.title || 'Point of Interest';
+                        const description = e.features[0].properties.description || '';
+                        
+                        new maplibregl.Popup()
+                            .setLngLat(coordinates)
+                            .setHTML(`<strong>${name}</strong><br>${description}`)
+                            .addTo(map);
+                    });
+                    
+                    map.on('mouseenter', 'pois', () => {
+                        map.getCanvas().style.cursor = 'pointer';
+                    });
+                    
+                    map.on('mouseleave', 'pois', () => {
+                        map.getCanvas().style.cursor = '';
+                    });
+                }
+                
+                // Fit map to trail bounds
+                if (trailBounds && !trailBounds.isEmpty()) {
+                    map.fitBounds(trailBounds, {
+                        padding: 50,
+                        duration: 1000
+                    });
+                }
+                
+                // Hide loading overlay
+                loadingOverlay.style.opacity = '0';
+                setTimeout(() => {
+                    loadingOverlay.style.display = 'none';
+                }, 300);
+                
+                // Show success message
+                infoMessage.style.opacity = '1';
+                infoMessage.textContent = '✅ Trail map loaded! Share your location to begin';
+                setTimeout(() => {
+                    if (infoMessage.textContent === '✅ Trail map loaded! Share your location to begin') {
+                        infoMessage.style.opacity = '0';
+                    }
+                }, 3000);
+                
+            } catch (error) {
+                console.error('Error loading trail data:', error);
+                loadingOverlay.innerHTML = `
+                    <div class="loading-content">
+                        <div style="color: #ff6b6b; font-size: 48px; margin-bottom: 16px;">⚠️</div>
+                        <div>Error loading trail data</div>
+                        <div style="font-size: 12px; margin-top: 8px;">Make sure trails.geojson exists in the data folder</div>
+                    </div>
+                `;
+            }
+        }
+        
+        // Start location tracking
+        function startLocationTracking() {
+            if (!navigator.geolocation) {
+                infoMessage.textContent = '❌ Geolocation not supported on this device';
+                infoMessage.style.opacity = '1';
+                return;
+            }
+            
+            watchId = navigator.geolocation.watchPosition(
+                (position) => {
+                    const { latitude, longitude, heading, altitude, accuracy } = position.coords;
+                    currentLocation = { lat: latitude, lng: longitude };
+                    
+                    // Update elevation (convert meters to feet if needed)
+                    if (altitude !== null) {
+                        const elevationFeet = Math.round(altitude * 3.28084);
+                        elevationEl.textContent = elevationFeet;
+                    } else {
+                        elevationEl.textContent = '---';
+                    }
+                    
+                    // Update heading
+                    if (heading !== null && heading >= 0) {
+                        currentHeading = heading;
+                        updateCompass(heading);
+                        updateMapRotation(heading);
+                    } else if (position.coords.speed > 0.5) {
+                        // If no heading but moving, calculate bearing from previous position
+                        // For simplicity, we'll just use the last known heading
+                    }
+                    
+                    // Update marker
+                    updateUserLocation(latitude, longitude, currentHeading, accuracy);
+                    
+                    // Auto-recenter on first location
+                    if (!userMarker) {
+                        resetInteractionTimer();
+                    }
+                },
+                (error) => {
+                    console.error('Geolocation error:', error);
+                    let errorMsg = '';
+                    switch(error.code) {
+                        case error.PERMISSION_DENIED:
+                            errorMsg = '📍 Please enable location services to see your position on the trail';
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            errorMsg = '📍 Location unavailable - check GPS signal';
+                            break;
+                        case error.TIMEOUT:
+                            errorMsg = '📍 Location request timed out';
+                            break;
+                    }
+                    infoMessage.textContent = errorMsg;
+                    infoMessage.style.opacity = '1';
+                },
+                {
+                    enableHighAccuracy: true,
+                    maximumAge: 5000,
+                    timeout: 10000
+                }
+            );
+        }
+        
+        // Map event listeners for auto-recenter
+        map.on('movestart', () => {
+            resetInteractionTimer();
+        });
+        
+        map.on('zoomstart', () => {
+            resetInteractionTimer();
+        });
+        
+        map.on('rotate', () => {
+            resetInteractionTimer();
+            // Update compass needle to show current map bearing
+            const currentBearing = map.getBearing();
+            if (!isRotationLocked && !isUserInteracting) {
+                updateCompass(currentBearing);
+            }
+        });
+        
+        // Button event listeners
+        compassButton.addEventListener('click', resetToNorthUp);
+        lockButton.addEventListener('click', toggleRotationLock);
+        
+        // Initialize
+        map.on('load', () => {
+            loadTrailData();
+            startLocationTracking();
+        });
+        
+        // Handle visibility change to save battery
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden && watchId) {
+                // Stop tracking when hidden to save battery
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+            } else if (!document.hidden && !watchId) {
+                startLocationTracking();
+            }
+        });
+        
+        // Add attribution
+        map.addControl(new maplibregl.NavigationControl(), 'top-right');
+        map.addControl(new maplibregl.AttributionControl(), 'bottom-right');
+        
+        // Set initial lock button style
+        lockButton.style.opacity = '0.6';
+        
+        // Hide info message after 5 seconds initially
+        setTimeout(() => {
+            if (infoMessage.style.opacity !== '0') {
+                infoMessage.style.opacity = '0';
+            }
+        }, 5000);
+    </script>
+</body>
+</html>
