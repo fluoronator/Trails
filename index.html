@@ -22,7 +22,7 @@
             margin: 0;
         }
 
-        /* NEW WRAPPER */
+        /* Wrapper rotates */
         #mapWrapper {
             position: fixed;
             width: 100vw;
@@ -30,13 +30,10 @@
             transform-origin: center center;
         }
 
+        /* ✅ FIX: normal map size (not oversized) */
         #map {
-            position: absolute;
-            width: 200vmax;
-            height: 200vmax;
-            left: 50%;
-            top: 50%;
-            transform: translate(-50%, -50%);
+            width: 100vw;
+            height: 100vh;
         }
 
         #modeBox {
