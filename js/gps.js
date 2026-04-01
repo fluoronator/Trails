@@ -1,54 +1,75 @@
+// ---------------------------
+// GPS + User Location Handling
+// ---------------------------
 
-let elevationBox = document.getElementById("elevationBox");
+let userMarker = null;
+let hasCentered = false;
 
+// ---------------------------
+// Start Geolocation Tracking
+// ---------------------------
+if (navigator.geolocation) {
+  navigator.geolocation.watchPosition(
+    (position) => {
+
+      const lat = position.coords.latitude;
+      const lon = position.coords.longitude;
+
+      const userLocation = [lat, lon];
+
+      // Create or update user marker
+      if (!userMarker) {
+        userMarker = L.circleMarker(userLocation, {
+          radius: 8,
+          color: '#007AFF',
+          fillColor: '#007AFF',
+          fillOpacity: 1
+        }).addTo(map);
+      } else {
+        userMarker.setLatLng(userLocation);
+      }
+
+      // ---------------------------
+      // Mode Logic (RESTORED)
+      // ---------------------------
+      if (window.trailCenter && !window.userMovedMap) {
+
+        let distance = map.distance(userLocation, window.trailCenter);
+
+        // Within park → Hiking Mode
+// ****************************************** restore distance to 3200 after testing
+        if (distance < 70000) {
+          map.setView(userLocation, 17);
+          document.getElementById("modeBox").innerHTML = "Hiking Mode";
+        } else {
+          // Outside park → Browse Mode
+          document.getElementById("modeBox").innerHTML = "Browse Mode";
+        }
+      }
+
+      // Initial centering (only once)
+      if (!hasCentered) {
+        map.setView(userLocation, 14);
+        hasCentered = true;
+      }
+
+    },
+    (err) => {
+      console.warn("GPS error:", err);
+    },
+    {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 10000
+    }
+  );
+}
+
+// ---------------------------
+// Detect manual map movement
+// ---------------------------
 window.userMovedMap = false;
 
-map.on("movestart", () => {
-    window.userMovedMap = true;
+map.on('movestart', function () {
+  window.userMovedMap = true;
 });
-
-// Blue dot
-let userMarker = L.circleMarker([0,0], {
-    radius: 8,
-    color: '#fff',
-    weight: 2,
-    fillColor: '#007aff',
-    fillOpacity: 1
-}).addTo(map);
-
-let accuracyCircle = L.circle([0,0], {
-    radius: 0,
-    color: '#007aff',
-    fillColor: '#007aff',
-    fillOpacity: 0.15,
-    weight: 1
-}).addTo(map);
-
-// GPS tracking
-navigator.geolocation.watchPosition(position => {
-
-    let lat = position.coords.latitude;
-    let lon = position.coords.longitude;
-
-    userMarker.setLatLng([lat, lon]);
-    accuracyCircle.setLatLng([lat, lon]);
-    accuracyCircle.setRadius(position.coords.accuracy);
-
-    // Elevation
-    if (position.coords.altitude !== null) {
-        let feet = position.coords.altitude * 3.28084;
-        elevationBox.innerHTML = "Elevation: " + feet.toFixed(0) + " ft";
-    }
-
-    // Auto-center logic
-    if (window.trailCenter && !window.userMovedMap) {
-
-        let distance = map.distance([lat, lon], window.trailCenter);
-
-        if (distance < 3200) {
-            map.setView([lat, lon], 17);
-            document.getElementById("modeBox").innerHTML = "Hiking Mode";
-        }
-    }
-
-}, () => {}, { enableHighAccuracy: true });
