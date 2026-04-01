@@ -48,8 +48,18 @@ fetch('data/parks.json')
             let p = feature.properties || {};
 
             if (p.title) {
-                layer.bindPopup("<b>" + p.title + "</b>");
-            }
+
+   		 // Always available on click (optional fallback)
+    		layer.bindPopup("<b>" + p.title + "</b>");
+
+    		// Label next to marker
+    		layer.bindTooltip(p.title, {
+        	permanent: true,
+        	direction: "right",
+        	offset: [10, 0],
+        	className: "poi-label"
+    		});
+	}
         }
 
     }).addTo(map);
