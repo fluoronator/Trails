@@ -1,1 +1,7 @@
 
+[
+  {
+    "name": "Default Park",
+    "file": "data/trails.geojson"
+  }
+]
