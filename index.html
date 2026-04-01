@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Rotating Map - Version 2</title>
+<title>Rotating Map - Version 3</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -17,27 +17,32 @@ html, body {
     overflow: hidden;
 }
 
-/* Large version number */
+/* VERSION NUMBER */
 #versionNumber {
     position: absolute;
     top: 20px;
     left: 20px;
-    font-size: 60px;
+    font-size: 70px;
     font-weight: bold;
     color: white;
     z-index: 1000;
     pointer-events: none;
 }
 
+/* Wrapper rotates */
 #mapWrapper {
-    height: 100%;
-    width: 100%;
+    position: absolute;
+    width: 150vw;
+    height: 150vh;
+    left: -25vw;
+    top: -25vh;
     transform-origin: center center;
 }
 
+/* Map fills the oversized wrapper */
 #map {
-    height: 100%;
     width: 100%;
+    height: 100%;
 }
 
 .leaflet-control-zoom {
@@ -47,7 +52,7 @@ html, body {
 </head>
 <body>
 
-<div id="versionNumber">2</div>
+<div id="versionNumber">3</div>
 
 <div id="mapWrapper">
     <div id="map"></div>
@@ -101,15 +106,14 @@ navigator.geolocation.watchPosition(position => {
     enableHighAccuracy: true
 });
 
-// ===== Rotation logic =====
-
+// ROTATION
 let mapWrapper = document.getElementById("mapWrapper");
 
 function rotateMap(deg) {
     mapWrapper.style.transform = "rotate(" + (-deg) + "deg)";
 }
 
-// Ask permission on iPhone when the page loads
+// Orientation permission (iPhone)
 window.onload = function() {
 
     if (typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -130,11 +134,9 @@ function handleOrientation(event) {
 
     let heading;
 
-    // iPhone
     if (event.webkitCompassHeading !== undefined) {
         heading = event.webkitCompassHeading;
     }
-    // Android
     else if (event.alpha !== null) {
         heading = 360 - event.alpha;
     }
