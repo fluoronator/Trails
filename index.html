@@ -193,6 +193,21 @@
             border: 1px solid rgba(255, 255, 255, 0.2);
         }
         
+        /* Debug panel */
+        .debug-panel {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-family: monospace;
+            color: #0f0;
+            z-index: 10;
+            pointer-events: none;
+        }
+        
         /* Map controls touch-friendly */
         .maplibregl-ctrl-group {
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
@@ -252,6 +267,10 @@
         </div>
     </div>
     
+    <div class="debug-panel" id="debugPanel">
+        Heading: --° | Map Bearing: --°
+    </div>
+    
     <div class="info-message" id="infoMessage">📍 Share location to see your position</div>
     <div class="loading-overlay" id="loadingOverlay">
         <div class="loading-content">
@@ -299,7 +318,6 @@
         let watchId = null;
         let isUserInteracting = false;
         let interactionTimeout = null;
-        let rotationAnimationId = null;
         
         // DOM elements
         const elevationEl = document.getElementById('elevation');
@@ -307,6 +325,7 @@
         const compassButton = document.getElementById('compassButton');
         const infoMessage = document.getElementById('infoMessage');
         const loadingOverlay = document.getElementById('loadingOverlay');
+        const debugPanel = document.getElementById('debugPanel');
         
         // Reset to north-up (tap compass)
         function resetToNorthUp() {
@@ -318,6 +337,13 @@
                     infoMessage.style.opacity = '0';
                 }
             }, 2000);
+            updateDebugPanel();
+        }
+        
+        // Update debug panel
+        function updateDebugPanel() {
+            const mapBearing = map.getBearing();
+            debugPanel.innerHTML = `Heading: ${Math.round(currentHeading)}° | Map Bearing: ${Math.round(mapBearing)}°`;
         }
         
         // Auto-recenter timer
@@ -343,6 +369,14 @@
         // Update compass needle
         function updateCompassNeedle() {
             compassNeedle.style.transform = `rotate(${currentHeading}deg)`;
+        }
+        
+        // FORCE map rotation - direct function
+        function rotateMapToHeading() {
+            if (!isUserInteracting) {
+                map.setBearing(currentHeading);
+                updateDebugPanel();
+            }
         }
         
         // Create simple blue dot marker
@@ -414,11 +448,20 @@
         }
         
         // Handle device orientation events
+        let lastHeadingLog = 0;
         function handleOrientation(event) {
             let alpha = event.alpha;
             if (alpha !== null && !isNaN(alpha)) {
                 currentHeading = alpha;
                 updateCompassNeedle();
+                rotateMapToHeading(); // Directly call rotation
+                updateDebugPanel();
+                
+                // Log every 30 degrees for debugging
+                if (Math.abs(currentHeading - lastHeadingLog) > 30) {
+                    console.log('Compass heading:', currentHeading);
+                    lastHeadingLog = currentHeading;
+                }
             }
         }
         
@@ -610,22 +653,6 @@
             );
         }
         
-        // Animation loop for smooth rotation - THIS IS THE KEY FIX
-        function startRotationAnimation() {
-            function animate() {
-                // Always update map bearing to match current heading when not interacting
-                if (!isUserInteracting && currentHeading !== null) {
-                    const currentBearing = map.getBearing();
-                    // Update if different (add a small threshold to avoid unnecessary updates)
-                    if (Math.abs(currentBearing - currentHeading) > 0.5) {
-                        map.setBearing(currentHeading);
-                    }
-                }
-                rotationAnimationId = requestAnimationFrame(animate);
-            }
-            animate();
-        }
-        
         // Map event listeners for auto-recenter
         map.on('movestart', resetInteractionTimer);
         map.on('zoomstart', resetInteractionTimer);
@@ -642,9 +669,6 @@
         startLocationTracking();
         startDeviceOrientation();
         
-        // Start the rotation animation loop
-        startRotationAnimation();
-        
         // Add navigation control
         map.addControl(new maplibregl.NavigationControl(), 'top-right');
         
@@ -655,17 +679,19 @@
             }
         }, 5000);
         
-        // Log to console for debugging
-        console.log('Map initialized, waiting for compass data...');
+        console.log('Map initialized - rotation should work when compass is active');
         
-        // Debug: show when heading changes
-        let lastLoggedHeading = 0;
+        // Test rotation manually every 2 seconds (for debugging)
+        let testAngle = 0;
         setInterval(() => {
-            if (Math.abs(currentHeading - lastLoggedHeading) > 10) {
-                console.log('Current heading:', currentHeading);
-                lastLoggedHeading = currentHeading;
+            if (currentHeading === 0 && testAngle < 360) {
+                // Only for testing if no compass data
+                testAngle += 45;
+                console.log('Test rotation to:', testAngle);
+                map.setBearing(testAngle);
+                updateDebugPanel();
             }
-        }, 1000);
+        }, 5000);
     </script>
 </body>
 </html>
