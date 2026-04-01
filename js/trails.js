@@ -27,25 +27,28 @@ fetch('data/parks.json')
             };
         },
 
-        // 📍 Handle POIs / markers
+        // 📍 Default red Leaflet markers for POIs
         pointToLayer: function(feature, latlng) {
-            let p = feature.properties || {};
 
-            return L.circleMarker(latlng, {
-                radius: 6,
-                color: p["marker-color"] || "#ffffff",
-                fillColor: p["marker-color"] || "#ffffff",
-                fillOpacity: 1,
-                weight: 1
+            let redIcon = L.icon({
+                iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+                shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+
+                iconSize: [25, 41],
+                iconAnchor: [12, 41],
+                popupAnchor: [1, -34],
+                shadowSize: [41, 41]
             });
+
+            return L.marker(latlng, { icon: redIcon });
         },
 
-        // 🏷 Optional: attach popup with title
+        // 🏷 Attach popups using title
         onEachFeature: function(feature, layer) {
             let p = feature.properties || {};
 
             if (p.title) {
-                layer.bindPopup(p.title);
+                layer.bindPopup("<b>" + p.title + "</b>");
             }
         }
 
