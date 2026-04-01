@@ -2,6 +2,11 @@
 // GPS + User Location Handling
 // ---------------------------
 
+// 🔧 EASY TESTING CONTROL
+// Set to 90000 to force Hiking Mode from far away
+// Set to 3200 for real behavior
+window.MODE_DISTANCE = 90000;
+
 let userMarker = null;
 let hasCentered = false;
 
@@ -25,7 +30,7 @@ if (navigator.geolocation) {
       const lat = position.coords.latitude;
       const lon = position.coords.longitude;
 
-      const userLocation = [lat, lon];
+      const userLocation = L.latLng(lat, lon);
 
       // Create or update user marker
       if (!userMarker) {
@@ -40,15 +45,13 @@ if (navigator.geolocation) {
       }
 
       // ---------------------------
-      // Mode Logic
+      // ✅ MODE LOGIC (SINGLE SOURCE)
       // ---------------------------
-      if (window.trailCenter && !window.userMovedMap) {
+      if (window.trailCenter) {
 
-        let distance = map.distance(userLocation, window.trailCenter);
+        let distance = userLocation.distanceTo(window.trailCenter);
 
-        // Within park → Hiking Mode
-        if (distance < 90000) {
-          map.setView(userLocation, 17);
+        if (distance <= window.MODE_DISTANCE) {
           setModeLabel("Hiking Mode");
         } else {
           setModeLabel("Browse Mode");
@@ -76,12 +79,11 @@ if (navigator.geolocation) {
 }
 
 // ---------------------------
-// Detect manual map movement (FIXED)
+// Detect manual map movement
 // ---------------------------
 window.userMovedMap = false;
 
 map.on('movestart', function (e) {
-  // Only count actual user interaction
   if (e.originalEvent) {
     window.userMovedMap = true;
   }

@@ -6,12 +6,11 @@ fetch('data/parks.json')
 .then(parks => {
 
     let park = parks[0];
-    return fetch(park.file)
-        .then(r => r.json())
-        .then(data => ({ data, park }));
+    return fetch(park.file);
 
 })
-.then(({ data, park }) => {
+.then(r => r.json())
+.then(data => {
 
     let trails = L.geoJSON(data, {
 
@@ -92,31 +91,7 @@ fetch('data/parks.json')
 
     map.fitBounds(bounds);
 
-    const modeBox = document.getElementById("modeBox");
-
-    // ✅ MODE DETECTION
-    const parkCenter = park.center
-        ? L.latLng(park.center[0], park.center[1])
-        : window.trailCenter;
-
-    const MODE_DISTANCE = 3200; // meters
-
-    function updateMode() {
-        const mapCenter = map.getCenter();
-        const distance = mapCenter.distanceTo(parkCenter);
-
-        if (distance <= MODE_DISTANCE) {
-            modeBox.innerHTML = "Hiking Mode";
-        } else {
-            modeBox.innerHTML = "Browse Mode";
-        }
-    }
-
-    // Initial mode
-    updateMode();
-
-    // ✅ FIXED: Only update on drag (not zoom)
-    map.on("dragend", updateMode);
+    document.getElementById("modeBox").innerHTML = "Browse Mode";
 
     // 🔍 POI label visibility
     function updatePOILabels() {
