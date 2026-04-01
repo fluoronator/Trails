@@ -19,18 +19,34 @@ fetch('data/trails.geojson')
   })
   .then(data => {
 
-    // Create trails layer
+    // ---------------------------
+    // Create Trails Layer
+    // ---------------------------
     trailsLayer = L.geoJSON(data, {
       style: function(feature) {
         return {
           color: '#3388ff',
           weight: 4
         };
+      },
+      onEachFeature: function(feature, layer) {
+
+        // ---------------------------
+        // Restore Labels (IMPORTANT)
+        // ---------------------------
+        if (feature.properties && feature.properties.name) {
+
+          layer.bindTooltip(feature.properties.name, {
+            permanent: true,
+            direction: "center",
+            className: "trail-label"
+          });
+        }
       }
     }).addTo(map);
 
     // ---------------------------
-    // Compute bounds safely
+    // Compute trail center (FIX)
     // ---------------------------
     let bounds = L.latLngBounds();
 
@@ -40,22 +56,18 @@ fetch('data/trails.geojson')
       }
     });
 
-    // ---------------------------
-    // Set trail center if valid
-    // ---------------------------
     if (bounds.isValid()) {
       window.trailCenter = bounds.getCenter();
-
-      // Fit map to trails
-      map.fitBounds(bounds);
-
       console.log("Trail center set:", window.trailCenter);
+
+      // Fit map to trails initially
+      map.fitBounds(bounds);
     } else {
       console.warn("Bounds invalid — trailCenter not set");
     }
 
     // ---------------------------
-    // Ensure label updates from "Loading..."
+    // Ensure label updates from Loading
     // ---------------------------
     const modeBox = document.getElementById("modeBox");
     if (modeBox) {
@@ -66,7 +78,6 @@ fetch('data/trails.geojson')
   .catch(err => {
     console.error("Error loading trails:", err);
 
-    // Prevent UI from getting stuck
     const modeBox = document.getElementById("modeBox");
     if (modeBox) {
       modeBox.innerHTML = "Browse Mode";
