@@ -295,11 +295,11 @@
         // Global variables
         let userMarker = null;
         let currentLocation = null;
-        let currentHeading = null;
+        let currentHeading = 0;
         let watchId = null;
         let isUserInteracting = false;
         let interactionTimeout = null;
-        let animationFrameId = null;
+        let rotationAnimationId = null;
         
         // DOM elements
         const elevationEl = document.getElementById('elevation');
@@ -340,22 +340,9 @@
             }, 3000);
         }
         
-        // Update map rotation based on heading
-        function updateMapRotation() {
-            if (!isUserInteracting && currentHeading !== null) {
-                const currentBearing = map.getBearing();
-                // Smooth rotation - update if different
-                if (Math.abs(currentBearing - currentHeading) > 0.1) {
-                    map.setBearing(currentHeading);
-                }
-            }
-        }
-        
         // Update compass needle
         function updateCompassNeedle() {
-            if (currentHeading !== null) {
-                compassNeedle.style.transform = `rotate(${currentHeading}deg)`;
-            }
+            compassNeedle.style.transform = `rotate(${currentHeading}deg)`;
         }
         
         // Create simple blue dot marker
@@ -375,7 +362,7 @@
                 map.flyTo({
                     center: [lng, lat],
                     zoom: 17,
-                    bearing: currentHeading || 0,
+                    bearing: currentHeading,
                     duration: 1000
                 });
             }
@@ -623,10 +610,20 @@
             );
         }
         
-        // Animation loop for smooth rotation
-        function animateRotation() {
-            updateMapRotation();
-            requestAnimationFrame(animateRotation);
+        // Animation loop for smooth rotation - THIS IS THE KEY FIX
+        function startRotationAnimation() {
+            function animate() {
+                // Always update map bearing to match current heading when not interacting
+                if (!isUserInteracting && currentHeading !== null) {
+                    const currentBearing = map.getBearing();
+                    // Update if different (add a small threshold to avoid unnecessary updates)
+                    if (Math.abs(currentBearing - currentHeading) > 0.5) {
+                        map.setBearing(currentHeading);
+                    }
+                }
+                rotationAnimationId = requestAnimationFrame(animate);
+            }
+            animate();
         }
         
         // Map event listeners for auto-recenter
@@ -645,8 +642,8 @@
         startLocationTracking();
         startDeviceOrientation();
         
-        // Start animation loop
-        animateRotation();
+        // Start the rotation animation loop
+        startRotationAnimation();
         
         // Add navigation control
         map.addControl(new maplibregl.NavigationControl(), 'top-right');
@@ -657,6 +654,18 @@
                 infoMessage.style.opacity = '0';
             }
         }, 5000);
+        
+        // Log to console for debugging
+        console.log('Map initialized, waiting for compass data...');
+        
+        // Debug: show when heading changes
+        let lastLoggedHeading = 0;
+        setInterval(() => {
+            if (Math.abs(currentHeading - lastLoggedHeading) > 10) {
+                console.log('Current heading:', currentHeading);
+                lastLoggedHeading = currentHeading;
+            }
+        }, 1000);
     </script>
 </body>
 </html>
