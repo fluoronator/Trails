@@ -29,39 +29,21 @@ const satelliteLayer = L.tileLayer(
 const map = L.map("map", {
     center: [34.7, -86.9],
     zoom: 13,
-    layers: [standardLayer],
+    layers: [standardLayer], // default layer
     zoomControl: false
 });
 
 // Move zoom control to bottom right
 L.control.zoom({ position: "bottomright" }).addTo(map);
 
-// --- Base Layer Switching ---
-let currentBaseLayer = standardLayer;
+// --- Layer Control (top right "stack" button) ---
+const baseMaps = {
+    "Standard": standardLayer,
+    "Topo": topoLayer,
+    "Satellite": satelliteLayer
+};
 
-function setBaseLayer(newLayer) {
-    if (currentBaseLayer) {
-        map.removeLayer(currentBaseLayer);
-    }
-    map.addLayer(newLayer);
-    currentBaseLayer = newLayer;
-}
-
-// --- Hook up radio buttons ---
-document.addEventListener("DOMContentLoaded", () => {
-    const radios = document.querySelectorAll('input[name="basemap"]');
-
-    radios.forEach(radio => {
-        radio.addEventListener("change", (e) => {
-            const value = e.target.value;
-
-            if (value === "standard") {
-                setBaseLayer(standardLayer);
-            } else if (value === "topo") {
-                setBaseLayer(topoLayer);
-            } else if (value === "satellite") {
-                setBaseLayer(satelliteLayer);
-            }
-        });
-    });
-});
+L.control.layers(baseMaps, null, {
+    position: "topright",
+    collapsed: true
+}).addTo(map);
