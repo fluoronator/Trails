@@ -11,42 +11,45 @@ window.trailCenter = null;
 // Load Trails
 // ---------------------------
 fetch('data/trails.geojson')
-  .then(res => {
-    if (!res.ok) {
-      throw new Error("Failed to load GeoJSON: " + res.status);
-    }
-    return res.json();
-  })
+  .then(res => res.json())
   .then(data => {
 
     // ---------------------------
-    // Create Trails Layer
+    // ORIGINAL TRAILS LAYER (unchanged behavior)
     // ---------------------------
     trailsLayer = L.geoJSON(data, {
-      style: function(feature) {
-        return {
-          color: '#3388ff',
-          weight: 4
-        };
-      },
       onEachFeature: function(feature, layer) {
 
-        // ---------------------------
-        // Restore Labels (IMPORTANT)
-        // ---------------------------
+        // Preserve your original label behavior
         if (feature.properties && feature.properties.name) {
-
           layer.bindTooltip(feature.properties.name, {
             permanent: true,
             direction: "center",
             className: "trail-label"
           });
         }
+
+      },
+      style: function(feature) {
+
+        // Preserve your original color logic
+        if (feature.properties && feature.properties.color) {
+          return {
+            color: feature.properties.color,
+            weight: 4
+          };
+        }
+
+        // fallback
+        return {
+          color: '#3388ff',
+          weight: 4
+        };
       }
     }).addTo(map);
 
     // ---------------------------
-    // Compute trail center (FIX)
+    // ADD THIS ONLY: Compute center
     // ---------------------------
     let bounds = L.latLngBounds();
 
@@ -59,27 +62,9 @@ fetch('data/trails.geojson')
     if (bounds.isValid()) {
       window.trailCenter = bounds.getCenter();
       console.log("Trail center set:", window.trailCenter);
-
-      // Fit map to trails initially
-      map.fitBounds(bounds);
-    } else {
-      console.warn("Bounds invalid — trailCenter not set");
-    }
-
-    // ---------------------------
-    // Ensure label updates from Loading
-    // ---------------------------
-    const modeBox = document.getElementById("modeBox");
-    if (modeBox) {
-      modeBox.innerHTML = "Browse Mode";
     }
 
   })
   .catch(err => {
     console.error("Error loading trails:", err);
-
-    const modeBox = document.getElementById("modeBox");
-    if (modeBox) {
-      modeBox.innerHTML = "Browse Mode";
-    }
   });
