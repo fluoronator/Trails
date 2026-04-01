@@ -8,7 +8,7 @@ fetch('data/parks.json')
     let park = parks[0];
     return fetch(park.file)
         .then(r => r.json())
-        .then(data => ({ data, park })); // ✅ pass park forward
+        .then(data => ({ data, park }));
 
 })
 .then(({ data, park }) => {
@@ -94,10 +94,7 @@ fetch('data/parks.json')
 
     const modeBox = document.getElementById("modeBox");
 
-    // =====================================================
-    // ✅ MODE DETECTION (ADDED SAFELY)
-    // =====================================================
-
+    // ✅ MODE DETECTION
     const parkCenter = park.center
         ? L.latLng(park.center[0], park.center[1])
         : window.trailCenter;
@@ -118,8 +115,8 @@ fetch('data/parks.json')
     // Initial mode
     updateMode();
 
-    // Update when map moves
-    map.on("moveend", updateMode);
+    // ✅ FIXED: Only update on drag (not zoom)
+    map.on("dragend", updateMode);
 
     // 🔍 POI label visibility
     function updatePOILabels() {
