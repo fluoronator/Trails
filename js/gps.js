@@ -52,9 +52,9 @@ if (navigator.geolocation) {
         let distance = userLocation.distanceTo(window.trailCenter);
 
         if (distance <= window.MODE_DISTANCE) {
-          setModeLabel("Hiking Mode");
+          setModeLabel("Hiking Modex");
         } else {
-          setModeLabel("Browse Mode");
+          setModeLabel("Browse Modex");
         }
       }
 
