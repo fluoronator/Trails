@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Rotating Map - Version 4</title>
+<title>Rotating Map - Version 5</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -27,6 +27,20 @@ html, body {
     color: white;
     z-index: 1000;
     pointer-events: none;
+}
+
+/* Elevation display */
+#elevationBox {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    font-size: 32px;
+    font-weight: bold;
+    color: white;
+    z-index: 1000;
+    background: rgba(0,0,0,0.4);
+    padding: 10px 16px;
+    border-radius: 12px;
 }
 
 /* This rotates */
@@ -54,7 +68,8 @@ html, body {
 </head>
 <body>
 
-<div id="versionNumber">4</div>
+<div id="versionNumber">5</div>
+<div id="elevationBox">Elevation: -- ft</div>
 
 <div id="mapWrapper">
     <div id="map"></div>
@@ -70,6 +85,20 @@ let map = L.map('map', {
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19
 }).addTo(map);
+
+// ===== Load GeoJSON from your repo =====
+fetch('/data/trails.geojson')
+    .then(response => response.json())
+    .then(data => {
+        L.geoJSON(data, {
+            style: {
+                color: "#00ff88",
+                weight: 4
+            }
+        }).addTo(map);
+    })
+    .catch(err => console.log("GeoJSON load error:", err));
+
 
 // Blue dot
 let userMarker = L.circleMarker([0,0], {
@@ -89,12 +118,16 @@ let accuracyCircle = L.circle([0,0], {
     weight: 1
 }).addTo(map);
 
+// Elevation display
+let elevationBox = document.getElementById("elevationBox");
+
 // Track location
 navigator.geolocation.watchPosition(position => {
 
     const lat = position.coords.latitude;
     const lon = position.coords.longitude;
     const accuracy = position.coords.accuracy;
+    const altitudeMeters = position.coords.altitude;
 
     userMarker.setLatLng([lat, lon]);
     accuracyCircle.setLatLng([lat, lon]);
@@ -102,13 +135,19 @@ navigator.geolocation.watchPosition(position => {
 
     map.setView([lat, lon], 18);
 
+    // Convert meters to feet
+    if (altitudeMeters !== null) {
+        let altitudeFeet = altitudeMeters * 3.28084;
+        elevationBox.innerHTML = "Elevation: " + altitudeFeet.toFixed(0) + " ft";
+    }
+
 }, error => {
     alert("Location permission required.");
 }, {
     enableHighAccuracy: true
 });
 
-// ROTATION
+// ===== ROTATION =====
 let mapWrapper = document.getElementById("mapWrapper");
 
 function rotateMap(deg) {
