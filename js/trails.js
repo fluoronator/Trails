@@ -43,18 +43,18 @@ fetch('data/parks.json')
             return L.marker(latlng, { icon: redIcon });
         },
 
-        // 🏷 Attach popups + labels
+        // 🏷 Attach popups + tooltips (NOT permanent)
         onEachFeature: function(feature, layer) {
             let p = feature.properties || {};
 
             if (p.title) {
 
-                // Optional popup (still useful fallback)
+                // Popup (optional)
                 layer.bindPopup("<b>" + p.title + "</b>");
 
-                // Permanent label (we'll control visibility by zoom)
+                // Tooltip (hidden by default)
                 layer.bindTooltip(p.title, {
-                    permanent: true,
+                    permanent: false,
                     direction: "right",
                     offset: [10, 0],
                     className: "poi-label"
