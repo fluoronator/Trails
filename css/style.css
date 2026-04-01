@@ -17,7 +17,7 @@
     box-shadow: 0 0 5px rgba(0,0,0,0.3);
 }
 
-/* ✅ POI labels ONLY (fix applied) */
+/* POI labels (clean text, WITH wrapping) */
 .leaflet-tooltip.poi-label {
     background: transparent !important;
     border: none !important;
@@ -28,6 +28,10 @@
     font-weight: 500;
 
     padding: 0;
+
+    max-width: 120px;       /* 👈 controls wrap width */
+    white-space: normal;    /* 👈 enables wrapping */
+    word-wrap: break-word;
 }
 
 /* Remove tooltip arrow */

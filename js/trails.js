@@ -49,14 +49,16 @@ fetch('data/parks.json')
 
                 if (p.title) {
 
-                    layer.bindPopup("<b>" + p.title + "</b>");
+                    let text = p.title;
 
-                    layer.bindTooltip(p.title, {
+                    layer.bindTooltip(text, {
                         permanent: false,
                         direction: "right",
                         offset: [10, 0],
                         className: "poi-label"
                     });
+
+                    layer.bindPopup("<b>" + text + "</b>");
                 }
             }
 
@@ -68,8 +70,7 @@ fetch('data/parks.json')
                     layer.setText(p.title, {
                         repeat: false,
                         center: true,
-                        offset: 0,
-                        orientation: 0,
+                        offset: 6,   // 👈 moves text off the line
 
                         attributes: {
                             fill: p.stroke || "#00ff88",
