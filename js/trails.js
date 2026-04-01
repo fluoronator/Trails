@@ -6,8 +6,8 @@ fetch("data/parks.json")
 
         let park = parks[0];
 
-        // Load trail GeoJSON
-        fetch(`data/trails/${park.file}`)
+        // ✅ RESTORED: Hardcoded working trail file
+        fetch("data/trails/HurricaneCreek.geojson")
             .then(res => res.json())
             .then(data => {
 
@@ -84,17 +84,16 @@ fetch("data/parks.json")
                 updatePOILabels();
 
                 // =====================================================
-                // ✅ MODE DETECTION (NEW - SAFE ADDITION)
+                // ✅ MODE DETECTION (SAFE)
                 // =====================================================
 
                 const modeBox = document.getElementById("modeBox");
 
-                // Use park center if available, otherwise fallback to bounds center
                 const parkCenter = park.center
                     ? L.latLng(park.center[0], park.center[1])
                     : trailLayer.getBounds().getCenter();
 
-                const MODE_DISTANCE = 3200; // meters *************************************** change back to 3200 after testing
+                const MODE_DISTANCE = 90000; // meters ************************************* change back to 3200 after testing
 
                 function updateMode() {
                     const mapCenter = map.getCenter();
@@ -107,10 +106,8 @@ fetch("data/parks.json")
                     }
                 }
 
-                // Update on movement
                 map.on("moveend", updateMode);
 
-                // Initial set
                 updateMode();
 
             });
