@@ -17,7 +17,7 @@
     box-shadow: 0 0 5px rgba(0,0,0,0.3);
 }
 
-/* POI labels (tightened spacing) */
+/* POI labels (tight + clean) */
 .leaflet-tooltip.poi-label {
     background: transparent !important;
     border: none !important;
@@ -33,22 +33,10 @@
     white-space: normal;
     word-wrap: break-word;
 
-    line-height: 1.1;   /* 👈 FIX: tighter vertical spacing */
+    line-height: 1.1;
 }
 
 /* Remove tooltip arrow */
 .leaflet-tooltip.poi-label::before {
     display: none !important;
-}
-
-/* Trail labels (clean, readable) */
-.trail-label {
-    color: black;
-    font-size: 14px;
-    font-weight: bold;
-    text-align: center;
-
-    white-space: nowrap;
-
-    text-shadow: 0 0 4px white;
 }

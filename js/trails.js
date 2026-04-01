@@ -60,26 +60,26 @@ fetch('data/parks.json')
                 }
             }
 
-            // 🟡 TRAILS (clean centered label)
+            // 🟡 TRAILS — curved text
             if (feature.geometry.type === "LineString") {
 
-                if (p.title) {
+                if (p.title && layer.setText) {
 
-                    let center = layer.getBounds().getCenter();
+                    layer.setText(p.title, {
+                        repeat: false,
+                        center: true,
+                        offset: 6,              // slight offset from line
+                        orientation: 0,
 
-                    let label = L.marker(center, {
-                        interactive: false,
-                        icon: L.divIcon({
-                            className: "trail-label",
-                            html: p.title,
-                            iconSize: null
-                        })
+                        attributes: {
+                            fill: p.stroke || "#00ff88",
+                            "font-size": "14",
+                            "font-weight": "bold",
+                            "letter-spacing": "1",   // keeps letters tighter
+                            "word-spacing": "2",
+                            "text-shadow": "0 0 3px white"
+                        }
                     });
-
-                    label.addTo(map);
-
-                    // Store reference for zoom control later
-                    layer._label = label;
                 }
             }
         }
@@ -103,15 +103,6 @@ fetch('data/parks.json')
                     layer.openTooltip();
                 } else {
                     layer.closeTooltip();
-                }
-            }
-
-            // Trail label zoom control
-            if (layer._label) {
-                if (zoom >= 15) {
-                    layer._label.getElement().style.display = "block";
-                } else {
-                    layer._label.getElement().style.display = "none";
                 }
             }
         });
