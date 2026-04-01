@@ -249,359 +249,299 @@
     </div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            // Base map tile layer
-            const tileLayer = new ol.layer.Tile({
-                source: new ol.source.OSM()
-            });
-            
-            // View with rotation
-            const view = new ol.View({
-                center: ol.proj.fromLonLat([-120.0, 37.5]),
-                zoom: 14,
-                rotation: 0
-            });
-            
-            // Create map
-            const map = new ol.Map({
-                target: 'map',
-                layers: [tileLayer],
-                view: view,
-                controls: ol.control.defaults()
-            });
-            
-            // Add zoom control
-            map.addControl(new ol.control.Zoom());
-            
-            // Global variables
-            let userMarker = null;
-            let currentLocation = null;
-            let currentHeading = 0;
-            let watchId = null;
-            let isUserInteracting = false;
-            let interactionTimeout = null;
-            
-            const elevationEl = document.getElementById('elevation');
-            const compassNeedle = document.getElementById('compassNeedle');
-            const compassButton = document.getElementById('compassButton');
-            const infoMessage = document.getElementById('infoMessage');
-            const loadingOverlay = document.getElementById('loadingOverlay');
-            const debugPanel = document.getElementById('debugPanel');
-            
-            // Convert degrees to radians
-            function degToRad(deg) {
-                return deg * Math.PI / 180;
-            }
-            
-            // Update compass needle and map rotation
-            function updateRotation(headingDegrees) {
-                currentHeading = headingDegrees;
-                
-                // Update compass needle
-                compassNeedle.style.transform = `rotate(${currentHeading}deg)`;
-                
-                // Update debug panel
-                debugPanel.innerHTML = `Heading: ${Math.round(currentHeading)}°`;
-                
-                // Update map rotation if not interacting
-                if (!isUserInteracting) {
-                    const rotationRadians = degToRad(currentHeading);
-                    view.setRotation(rotationRadians);
-                }
-            }
-            
-            // Reset to north-up
-            function resetToNorth() {
-                updateRotation(0);
-                infoMessage.textContent = '🗺️ Map north-up';
-                infoMessage.style.opacity = '1';
-                setTimeout(() => {
-                    if (infoMessage.textContent === '🗺️ Map north-up') {
-                        infoMessage.style.opacity = '0';
-                    }
-                }, 1500);
-            }
-            
-            // Auto-recenter timer
-            function resetInteractionTimer() {
-                if (interactionTimeout) clearTimeout(interactionTimeout);
-                isUserInteracting = true;
-                
-                interactionTimeout = setTimeout(() => {
-                    isUserInteracting = false;
-                    if (currentLocation) {
-                        const currentZoom = view.getZoom();
-                        view.animate({
-                            center: ol.proj.fromLonLat([currentLocation.lng, currentLocation.lat]),
-                            zoom: Math.max(currentZoom, 16),
-                            duration: 800
-                        });
-                    }
-                }, 3000);
-            }
-            
-            // Create user location marker
-            function updateUserLocation(lat, lng) {
-                const coords = ol.proj.fromLonLat([lng, lat]);
-                
-                if (!userMarker) {
-                    // Create a vector source and layer for the marker
-                    const markerFeature = new ol.Feature({
-                        geometry: new ol.geom.Point(coords)
-                    });
-                    
-                    const markerSource = new ol.source.Vector({
-                        features: [markerFeature]
-                    });
-                    
-                    const markerLayer = new ol.layer.Vector({
-                        source: markerSource,
-                        style: new ol.style.Style({
-                            image: new ol.style.Circle({
-                                radius: 10,
-                                fill: new ol.style.Fill({ color: '#007AFF' }),
-                                stroke: new ol.style.Stroke({ color: 'white', width: 3 })
-                            })
-                        })
-                    });
-                    
-                    map.addLayer(markerLayer);
-                    userMarker = markerFeature;
-                } else {
-                    userMarker.getGeometry().setCoordinates(coords);
-                }
-                
-                // Center on first location
-                if (!currentLocation) {
-                    view.animate({
-                        center: coords,
-                        zoom: 17,
-                        rotation: degToRad(currentHeading),
-                        duration: 1000
-                    });
-                }
-            }
-            
-            // Device orientation handler
-            function handleOrientation(event) {
-                // Get absolute heading (0 = north)
-                let heading = event.webkitCompassHeading;
-                
-                // Fallback for Android
-                if (heading === undefined) {
-                    heading = event.alpha;
-                }
-                
-                if (heading !== null && !isNaN(heading)) {
-                    updateRotation(heading);
-                }
-            }
-            
-            // Start compass
-            function startCompass() {
-                if (!window.DeviceOrientationEvent) {
-                    console.log('No compass support');
-                    debugPanel.innerHTML = 'No compass support';
-                    return;
-                }
-                
-                if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                    // iOS
-                    let permissionRequested = false;
-                    
-                    const requestPermission = () => {
-                        if (permissionRequested) return;
-                        permissionRequested = true;
-                        
-                        DeviceOrientationEvent.requestPermission()
-                            .then(permissionState => {
-                                if (permissionState === 'granted') {
-                                    window.addEventListener('deviceorientation', handleOrientation);
-                                    infoMessage.textContent = '🧭 Compass active - map rotates';
-                                    infoMessage.style.opacity = '1';
-                                    setTimeout(() => {
-                                        if (infoMessage.textContent === '🧭 Compass active - map rotates') {
-                                            infoMessage.style.opacity = '0';
-                                        }
-                                    }, 3000);
-                                    debugPanel.innerHTML = 'Compass active';
-                                }
-                            })
-                            .catch(err => {
-                                console.error('Compass error:', err);
-                                debugPanel.innerHTML = 'Compass permission denied';
-                            });
-                    };
-                    
-                    document.body.addEventListener('click', requestPermission);
-                    document.body.addEventListener('touchstart', requestPermission);
-                    infoMessage.textContent = '📱 Tap screen to enable compass';
-                    infoMessage.style.opacity = '1';
-                    debugPanel.innerHTML = 'Tap to enable compass';
-                } else {
-                    // Android
-                    window.addEventListener('deviceorientation', handleOrientation);
-                    infoMessage.textContent = '🧭 Compass active - map rotates';
-                    setTimeout(() => {
-                        if (infoMessage.textContent === '🧭 Compass active - map rotates') {
-                            infoMessage.style.opacity = '0';
-                        }
-                    }, 3000);
-                    debugPanel.innerHTML = 'Compass active (Android)';
-                }
-            }
-            
-            // Load GeoJSON trails
-            async function loadTrails() {
-                try {
-                    const response = await fetch('data/trails.geojson');
-                    if (response.ok) {
-                        const geojson = await response.json();
-                        
-                        // Convert GeoJSON to OpenLayers format
-                        const format = new ol.format.GeoJSON();
-                        const features = format.readFeatures(geojson, {
-                            dataProjection: 'EPSG:4326',
-                            featureProjection: 'EPSG:3857'
-                        });
-                        
-                        // Separate trails (lines) from POIs (points)
-                        const trailFeatures = features.filter(f => f.getGeometry().getType() === 'LineString');
-                        const poiFeatures = features.filter(f => f.getGeometry().getType() === 'Point');
-                        
-                        // Add trails layer
-                        if (trailFeatures.length > 0) {
-                            const trailSource = new ol.source.Vector({
-                                features: trailFeatures
-                            });
-                            
-                            const trailsLayer = new ol.layer.Vector({
-                                source: trailSource,
-                                style: new ol.style.Style({
-                                    stroke: new ol.style.Stroke({
-                                        color: (feature) => {
-                                            const props = feature.getProperties();
-                                            return props.stroke || props.color || '#4CAF50';
-                                        },
-                                        width: 4
-                                    })
-                                })
-                            });
-                            
-                            map.addLayer(trailsLayer);
-                            
-                            // Fit map to trails bounds
-                            const extent = trailSource.getExtent();
-                            if (extent && !ol.extent.isEmpty(extent)) {
-                                view.fit(extent, { padding: [50, 50, 50, 50], duration: 1000 });
-                            }
-                        }
-                        
-                        // Add POIs layer
-                        if (poiFeatures.length > 0) {
-                            const poiSource = new ol.source.Vector({
-                                features: poiFeatures
-                            });
-                            
-                            const poisLayer = new ol.layer.Vector({
-                                source: poiSource,
-                                style: new ol.style.Style({
-                                    image: new ol.style.Circle({
-                                        radius: 8,
-                                        fill: new ol.style.Fill({ color: '#FF6B35' }),
-                                        stroke: new ol.style.Stroke({ color: 'white', width: 2 })
-                                    })
-                                })
-                            });
-                            
-                            map.addLayer(poisLayer);
-                            
-                            // Add popup on click
-                            map.on('click', (evt) => {
-                                const feature = map.forEachFeatureAtPixel(evt.pixel, (f) => f);
-                                if (feature && poiFeatures.includes(feature)) {
-                                    const props = feature.getProperties();
-                                    const name = props.name || props.title || 'Point of Interest';
-                                    alert(name);
-                                }
-                            });
-                        }
-                        
-                        console.log(`Loaded ${trailFeatures.length} trails, ${poiFeatures.length} POIs`);
-                    }
-                } catch (err) {
-                    console.log('No trails file:', err);
-                }
-                
-                loadingOverlay.style.opacity = '0';
-                setTimeout(() => {
-                    loadingOverlay.style.display = 'none';
-                }, 500);
-            }
-            
-            // GPS tracking
-            function startGPS() {
-                if (!navigator.geolocation) {
-                    infoMessage.textContent = '❌ GPS not supported';
-                    return;
-                }
-                
-                watchId = navigator.geolocation.watchPosition(
-                    (position) => {
-                        const { latitude, longitude, altitude } = position.coords;
-                        currentLocation = { lat: latitude, lng: longitude };
-                        
-                        if (altitude !== null) {
-                            elevationEl.textContent = Math.round(altitude * 3.28084);
-                        }
-                        
-                        updateUserLocation(latitude, longitude);
-                        resetInteractionTimer();
-                    },
-                    (error) => {
-                        let msg = '';
-                        if (error.code === 1) msg = '📍 Enable location services';
-                        else if (error.code === 2) msg = '📍 GPS signal weak';
-                        else msg = '📍 Location error';
-                        infoMessage.textContent = msg;
-                        infoMessage.style.opacity = '1';
-                    },
-                    { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
-                );
-            }
-            
-            // Map interaction listeners
-            map.on('movestart', resetInteractionTimer);
-            map.on('rotateend', () => {
-                resetInteractionTimer();
-            });
-            
-            compassButton.addEventListener('click', resetToNorth);
-            
-            startGPS();
-            startCompass();
-            loadTrails();
-            
-            setTimeout(() => {
-                infoMessage.style.opacity = '0';
-            }, 5000);
-            
-            // Test rotation manually
-            setTimeout(() => {
-                console.log('Testing rotation...');
-                let testAngle = 0;
-                const testInterval = setInterval(() => {
-                    if (testAngle <= 360) {
-                        console.log(`Test rotation: ${testAngle}°`);
-                        updateRotation(testAngle);
-                        testAngle += 45;
-                    } else {
-                        clearInterval(testInterval);
-                        console.log('Test complete');
-                    }
-                }, 1000);
-            }, 3000);
+        // Simple map initialization - no trails first
+        const tileLayer = new ol.layer.Tile({
+            source: new ol.source.OSM()
         });
+        
+        const view = new ol.View({
+            center: ol.proj.fromLonLat([-120.0, 37.5]),
+            zoom: 14,
+            rotation: 0
+        });
+        
+        const map = new ol.Map({
+            target: 'map',
+            layers: [tileLayer],
+            view: view,
+            controls: ol.control.defaults()
+        });
+        
+        map.addControl(new ol.control.Zoom());
+        
+        // Hide loading overlay immediately
+        setTimeout(() => {
+            document.getElementById('loadingOverlay').style.display = 'none';
+        }, 1000);
+        
+        // Global variables
+        let userMarker = null;
+        let currentLocation = null;
+        let currentHeading = 0;
+        let watchId = null;
+        let isUserInteracting = false;
+        let interactionTimeout = null;
+        
+        const elevationEl = document.getElementById('elevation');
+        const compassNeedle = document.getElementById('compassNeedle');
+        const compassButton = document.getElementById('compassButton');
+        const infoMessage = document.getElementById('infoMessage');
+        const debugPanel = document.getElementById('debugPanel');
+        
+        function degToRad(deg) {
+            return deg * Math.PI / 180;
+        }
+        
+        // Update rotation
+        function updateRotation(headingDegrees) {
+            currentHeading = headingDegrees;
+            compassNeedle.style.transform = `rotate(${currentHeading}deg)`;
+            debugPanel.innerHTML = `Heading: ${Math.round(currentHeading)}° | Rot: ${Math.round(view.getRotation() * 180 / Math.PI)}°`;
+            
+            if (!isUserInteracting) {
+                view.setRotation(degToRad(currentHeading));
+            }
+        }
+        
+        // Reset to north
+        function resetToNorth() {
+            updateRotation(0);
+            infoMessage.textContent = '🗺️ Map north-up';
+            infoMessage.style.opacity = '1';
+            setTimeout(() => {
+                if (infoMessage.textContent === '🗺️ Map north-up') {
+                    infoMessage.style.opacity = '0';
+                }
+            }, 1500);
+        }
+        
+        // Auto-recenter
+        function resetInteractionTimer() {
+            if (interactionTimeout) clearTimeout(interactionTimeout);
+            isUserInteracting = true;
+            
+            interactionTimeout = setTimeout(() => {
+                isUserInteracting = false;
+                if (currentLocation) {
+                    const currentZoom = view.getZoom();
+                    view.animate({
+                        center: ol.proj.fromLonLat([currentLocation.lng, currentLocation.lat]),
+                        zoom: Math.max(currentZoom, 16),
+                        duration: 800
+                    });
+                }
+            }, 3000);
+        }
+        
+        // User location marker
+        function updateUserLocation(lat, lng) {
+            const coords = ol.proj.fromLonLat([lng, lat]);
+            
+            if (!userMarker) {
+                const markerFeature = new ol.Feature({
+                    geometry: new ol.geom.Point(coords)
+                });
+                
+                const markerSource = new ol.source.Vector({
+                    features: [markerFeature]
+                });
+                
+                const markerLayer = new ol.layer.Vector({
+                    source: markerSource,
+                    style: new ol.style.Style({
+                        image: new ol.style.Circle({
+                            radius: 10,
+                            fill: new ol.style.Fill({ color: '#007AFF' }),
+                            stroke: new ol.style.Stroke({ color: 'white', width: 3 })
+                        })
+                    })
+                });
+                
+                map.addLayer(markerLayer);
+                userMarker = markerFeature;
+            } else {
+                userMarker.getGeometry().setCoordinates(coords);
+            }
+            
+            if (!currentLocation) {
+                view.animate({
+                    center: coords,
+                    zoom: 17,
+                    rotation: degToRad(currentHeading),
+                    duration: 1000
+                });
+            }
+        }
+        
+        // Compass handler
+        function handleOrientation(event) {
+            let heading = event.webkitCompassHeading;
+            if (heading === undefined) {
+                heading = event.alpha;
+            }
+            
+            if (heading !== null && !isNaN(heading)) {
+                updateRotation(heading);
+            }
+        }
+        
+        // Start compass
+        function startCompass() {
+            if (!window.DeviceOrientationEvent) {
+                debugPanel.innerHTML = 'No compass support';
+                return;
+            }
+            
+            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                let permissionRequested = false;
+                
+                const requestPermission = () => {
+                    if (permissionRequested) return;
+                    permissionRequested = true;
+                    
+                    DeviceOrientationEvent.requestPermission()
+                        .then(permissionState => {
+                            if (permissionState === 'granted') {
+                                window.addEventListener('deviceorientation', handleOrientation);
+                                infoMessage.textContent = '🧭 Compass active';
+                                infoMessage.style.opacity = '1';
+                                setTimeout(() => {
+                                    if (infoMessage.textContent === '🧭 Compass active') {
+                                        infoMessage.style.opacity = '0';
+                                    }
+                                }, 3000);
+                                debugPanel.innerHTML = 'Compass active';
+                            }
+                        })
+                        .catch(err => {
+                            debugPanel.innerHTML = 'Compass denied';
+                        });
+                };
+                
+                document.body.addEventListener('click', requestPermission);
+                document.body.addEventListener('touchstart', requestPermission);
+                infoMessage.textContent = '📱 Tap to enable compass';
+                infoMessage.style.opacity = '1';
+                debugPanel.innerHTML = 'Tap to enable';
+            } else {
+                window.addEventListener('deviceorientation', handleOrientation);
+                debugPanel.innerHTML = 'Compass active';
+            }
+        }
+        
+        // Try to load trails (don't let it break)
+        async function loadTrails() {
+            try {
+                const response = await fetch('data/trails.geojson');
+                if (response.ok) {
+                    const geojson = await response.json();
+                    const format = new ol.format.GeoJSON();
+                    const features = format.readFeatures(geojson, {
+                        dataProjection: 'EPSG:4326',
+                        featureProjection: 'EPSG:3857'
+                    });
+                    
+                    const trailFeatures = features.filter(f => f.getGeometry().getType() === 'LineString');
+                    const poiFeatures = features.filter(f => f.getGeometry().getType() === 'Point');
+                    
+                    if (trailFeatures.length > 0) {
+                        const trailSource = new ol.source.Vector({ features: trailFeatures });
+                        const trailsLayer = new ol.layer.Vector({
+                            source: trailSource,
+                            style: new ol.style.Style({
+                                stroke: new ol.style.Stroke({ color: '#4CAF50', width: 4 })
+                            })
+                        });
+                        map.addLayer(trailsLayer);
+                        
+                        const extent = trailSource.getExtent();
+                        if (extent && !ol.extent.isEmpty(extent)) {
+                            view.fit(extent, { padding: [50, 50, 50, 50] });
+                        }
+                    }
+                    
+                    if (poiFeatures.length > 0) {
+                        const poiSource = new ol.source.Vector({ features: poiFeatures });
+                        const poisLayer = new ol.layer.Vector({
+                            source: poiSource,
+                            style: new ol.style.Style({
+                                image: new ol.style.Circle({
+                                    radius: 8,
+                                    fill: new ol.style.Fill({ color: '#FF6B35' }),
+                                    stroke: new ol.style.Stroke({ color: 'white', width: 2 })
+                                })
+                            })
+                        });
+                        map.addLayer(poisLayer);
+                    }
+                    
+                    console.log('Trails loaded');
+                }
+            } catch (err) {
+                console.log('No trails file');
+            }
+        }
+        
+        // GPS
+        function startGPS() {
+            if (!navigator.geolocation) {
+                infoMessage.textContent = '❌ GPS not supported';
+                return;
+            }
+            
+            watchId = navigator.geolocation.watchPosition(
+                (position) => {
+                    const { latitude, longitude, altitude } = position.coords;
+                    currentLocation = { lat: latitude, lng: longitude };
+                    
+                    if (altitude !== null) {
+                        elevationEl.textContent = Math.round(altitude * 3.28084);
+                    }
+                    
+                    updateUserLocation(latitude, longitude);
+                    resetInteractionTimer();
+                },
+                (error) => {
+                    let msg = '';
+                    if (error.code === 1) msg = '📍 Enable location services';
+                    else if (error.code === 2) msg = '📍 GPS signal weak';
+                    else msg = '📍 Location error';
+                    infoMessage.textContent = msg;
+                    infoMessage.style.opacity = '1';
+                },
+                { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+            );
+        }
+        
+        // Map interactions
+        map.on('movestart', resetInteractionTimer);
+        map.on('rotateend', () => resetInteractionTimer());
+        compassButton.addEventListener('click', resetToNorth);
+        
+        startGPS();
+        startCompass();
+        loadTrails();
+        
+        // Test rotation after 2 seconds
+        setTimeout(() => {
+            console.log('Testing rotation - watch the map!');
+            let testAngle = 0;
+            const testInterval = setInterval(() => {
+                if (testAngle <= 360) {
+                    console.log(`Test rotation: ${testAngle}°`);
+                    updateRotation(testAngle);
+                    testAngle += 45;
+                } else {
+                    clearInterval(testInterval);
+                    console.log('Test complete - now use your phone compass');
+                    infoMessage.textContent = 'Test complete - turn your phone!';
+                    infoMessage.style.opacity = '1';
+                    setTimeout(() => {
+                        infoMessage.style.opacity = '0';
+                    }, 2000);
+                }
+            }, 800);
+        }, 2000);
     </script>
 </body>
 </html>
