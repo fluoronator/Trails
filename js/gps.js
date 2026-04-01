@@ -38,7 +38,7 @@ if (navigator.geolocation) {
 
         // Within park → Hiking Mode
 // ****************************************** restore distance to 3200 after testing
-        if (distance < 70000) {
+        if (distance < 90000) {
           map.setView(userLocation, 17);
           document.getElementById("modeBox").innerHTML = "Hiking Mode";
         } else {
