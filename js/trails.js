@@ -94,7 +94,7 @@ fetch("data/parks.json")
                     ? L.latLng(park.center[0], park.center[1])
                     : trailLayer.getBounds().getCenter();
 
-                const MODE_DISTANCE = 90000; // meters *************************************** change back to 3200 after testing
+                const MODE_DISTANCE = 3200; // meters *************************************** change back to 3200 after testing
 
                 function updateMode() {
                     const mapCenter = map.getCenter();
