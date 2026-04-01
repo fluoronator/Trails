@@ -6,6 +6,16 @@ let userMarker = null;
 let hasCentered = false;
 
 // ---------------------------
+// Helper: safely update mode label
+// ---------------------------
+function setModeLabel(text) {
+  const modeBox = document.getElementById("modeBox");
+  if (modeBox) {
+    modeBox.innerHTML = text;
+  }
+}
+
+// ---------------------------
 // Start Geolocation Tracking
 // ---------------------------
 if (navigator.geolocation) {
@@ -30,20 +40,18 @@ if (navigator.geolocation) {
       }
 
       // ---------------------------
-      // Mode Logic (RESTORED)
+      // Mode Logic
       // ---------------------------
       if (window.trailCenter && !window.userMovedMap) {
 
         let distance = map.distance(userLocation, window.trailCenter);
 
         // Within park → Hiking Mode
-// ****************************************** restore distance to 3200 after testing
-        if (distance < 90000) {
+        if (distance < 3200) {
           map.setView(userLocation, 17);
-          document.getElementById("modeBox").innerHTML = "Hiking Mode";
+          setModeLabel("Hiking Mode");
         } else {
-          // Outside park → Browse Mode
-          document.getElementById("modeBox").innerHTML = "Browse Mode";
+          setModeLabel("Browse Mode");
         }
       }
 
@@ -51,6 +59,8 @@ if (navigator.geolocation) {
       if (!hasCentered) {
         map.setView(userLocation, 14);
         hasCentered = true;
+
+        setModeLabel("Browse Mode");
       }
 
     },
@@ -66,10 +76,13 @@ if (navigator.geolocation) {
 }
 
 // ---------------------------
-// Detect manual map movement
+// Detect manual map movement (FIXED)
 // ---------------------------
 window.userMovedMap = false;
 
-map.on('movestart', function () {
-  window.userMovedMap = true;
+map.on('movestart', function (e) {
+  // Only count actual user interaction
+  if (e.originalEvent) {
+    window.userMovedMap = true;
+  }
 });
