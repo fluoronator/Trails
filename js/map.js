@@ -4,7 +4,7 @@
 const standardLayer = L.tileLayer(
     "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
     {
-        maxZoom: 19,
+        maxZoom: 21,
         attribution: "&copy; OpenStreetMap contributors"
     }
 );
@@ -12,7 +12,8 @@ const standardLayer = L.tileLayer(
 const topoLayer = L.tileLayer(
     "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
     {
-        maxZoom: 17,
+        maxNativeZoom: 17, // actual tile limit
+        maxZoom: 21,       // allow zoom beyond (stretch)
         attribution: "&copy; OpenTopoMap contributors"
     }
 );
@@ -20,7 +21,7 @@ const topoLayer = L.tileLayer(
 const satelliteLayer = L.tileLayer(
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     {
-        maxZoom: 19,
+        maxZoom: 21,
         attribution: "Tiles &copy; Esri"
     }
 );
@@ -29,14 +30,15 @@ const satelliteLayer = L.tileLayer(
 const map = L.map("map", {
     center: [34.7, -86.9],
     zoom: 13,
-    layers: [standardLayer], // default layer
+    maxZoom: 21,
+    layers: [standardLayer],
     zoomControl: false
 });
 
 // Move zoom control to bottom right
 L.control.zoom({ position: "bottomright" }).addTo(map);
 
-// --- Layer Control (top right "stack" button) ---
+// --- Layer Control ---
 const baseMaps = {
     "Standard": standardLayer,
     "Topo": topoLayer,
