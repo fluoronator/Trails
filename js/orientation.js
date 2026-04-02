@@ -18,6 +18,16 @@ let smoothingActive = false;
 const mapWrapper = document.getElementById("map-rotate-wrapper");
 const northArrow  = document.getElementById("northArrow");
 
+(function () {
+    const label = document.getElementById("debugVersionLabel");
+    if (label) {
+        const now = new Date();
+        label.textContent = "JS Loaded: " + now.toLocaleString();
+    }
+
+    console.log("NEW VERSION LOADED", new Date().toISOString());
+})();
+
 // ── SMOOTH ROTATION ────────────────────────────────────────────────────────────
 
 // Returns the shortest signed delta to go from angle `from` to angle `to`,
