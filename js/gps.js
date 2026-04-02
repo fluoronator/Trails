@@ -163,90 +163,132 @@ if (navigator.geolocation) {
 
 // ── ROTATION-AWARE PANNING ────────────────────────────────────────────────────
 //
-// Problem: when the map wrapper is CSS-rotated, Leaflet still thinks the map is
-// north-up. A finger drag that moves "up" on screen tells Leaflet to pan north —
-// but if the map is rotated 90° (facing East), "up on screen" is actually East,
-// so the map pans in the wrong direction.
+// Problem: Leaflet's drag handler operates in screen-pixel space and has no
+// knowledge that the map tile layer is CSS-rotated. A finger moving "up" always
+// tells Leaflet to pan north, even when north is to the left on the rotated map.
 //
-// Fix: patch Leaflet's internal drag handler to rotate the pixel movement vector
-// by the current map heading before Leaflet interprets it.  We do this by
-// monkey-patching the Dragging handler's _move method right after the map loads.
+// Fix: disable Leaflet's built-in drag entirely and replace it with our own
+// pointer-event handler that:
+//   1. Tracks the raw screen-pixel delta between each pointer move.
+//   2. Rotates that delta vector by the current map heading.
+//   3. Calls map.panBy() with the corrected delta.
+//
+// This is more reliable than monkey-patching Leaflet internals because we
+// control the full delta computation — there's no internal state to fight.
 
-(function patchLeafletDrag() {
-    const dragging = map.dragging;
+(function installRotationAwareDrag() {
 
-    // Wait one tick so Leaflet has fully initialised its handlers
-    setTimeout(() => {
-        const handler = dragging._draggable;
-        if (!handler) return;
+    // Disable Leaflet's own drag so they don't conflict
+    map.dragging.disable();
 
-        const originalOnMove = handler._onMove.bind(handler);
+    const container = map.getContainer();
 
-        handler._onMove = function(e) {
-            const deg = window.mapRotationDeg || 0;
+    let isDragging  = false;
+    let lastX       = 0;
+    let lastY       = 0;
 
-            // Only correct when the map is actually rotated
-            if (deg === 0) {
-                return originalOnMove(e);
-            }
+    // ── helpers ──────────────────────────────────────────────────────────────
 
-            // Clone the event so we don't mutate the real one
-            const rad = (deg * Math.PI) / 180;
-            const cos = Math.cos(rad);
-            const sin = Math.sin(rad);
+    function getPoint(e) {
+        // Normalise mouse and touch events to a single {x, y}
+        if (e.touches && e.touches.length > 0) {
+            return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        }
+        return { x: e.clientX, y: e.clientY };
+    }
 
-            // Leaflet reads clientX/clientY from the event to compute the drag delta.
-            // We need to rotate those coordinates around the map's center point so
-            // that screen-space movement maps correctly to geographic movement.
-            const mapContainer = map.getContainer();
-            const rect = mapContainer.getBoundingClientRect();
-
-            // Use the visual center of the viewport (not the rotated container)
-            const cx = window.innerWidth  / 2;
-            const cy = window.innerHeight / 2;
-
-            // Extract the raw pointer position
-            const touches = e.touches || e.changedTouches;
-            const source  = touches ? touches[0] : e;
-            const px = source.clientX - cx;
-            const py = source.clientY - cy;
-
-            // Rotate the pointer position by -deg (inverse of map rotation)
-            const rx =  px * cos + py * sin;
-            const ry = -px * sin + py * cos;
-
-            // Build a synthetic event with the corrected coordinates
-            const fakeEvent = new Proxy(e, {
-                get(target, prop) {
-                    if (prop === 'clientX') return rx + cx;
-                    if (prop === 'clientY') return ry + cy;
-                    if (prop === 'touches' || prop === 'changedTouches') {
-                        // Wrap the touches array with corrected values
-                        const orig = target[prop];
-                        if (!orig) return orig;
-                        return new Proxy(orig, {
-                            get(tarr, tidx) {
-                                if (tidx === '0' || tidx === 0) {
-                                    return new Proxy(tarr[0], {
-                                        get(tt, tp) {
-                                            if (tp === 'clientX') return rx + cx;
-                                            if (tp === 'clientY') return ry + cy;
-                                            return tt[tp];
-                                        }
-                                    });
-                                }
-                                return tarr[tidx];
-                            }
-                        });
-                    }
-                    const val = target[prop];
-                    return typeof val === 'function' ? val.bind(target) : val;
-                }
-            });
-
-            return originalOnMove(fakeEvent);
+    function rotateDelta(dx, dy, deg) {
+        // The map is visually rotated by -deg (we applied rotate(-heading)).
+        // To make the finger movement feel correct in the rotated frame we
+        // rotate the screen-space delta by +deg back to map-space.
+        const rad = (deg * Math.PI) / 180;
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+        return {
+            dx:  dx * cos + dy * sin,
+            dy: -dx * sin + dy * cos
         };
-    }, 0);
+    }
+
+    // ── pointer down ─────────────────────────────────────────────────────────
+
+    function onStart(e) {
+        // Ignore multi-touch (pinch zoom) — only handle single finger/mouse
+        if (e.touches && e.touches.length !== 1) return;
+
+        isDragging = true;
+        const pt = getPoint(e);
+        lastX = pt.x;
+        lastY = pt.y;
+
+        // Notify the rest of the app that the user started moving the map
+        userMovedMap = true;
+        if (isHikingMode) showRecenterBtn(true);
+        resetRecenterTimer();
+
+        map.fire('dragstart');
+    }
+
+    // ── pointer move ─────────────────────────────────────────────────────────
+
+    function onMove(e) {
+        if (!isDragging) return;
+        if (e.touches && e.touches.length !== 1) {
+            // Multi-touch started mid-drag — abort our drag
+            isDragging = false;
+            return;
+        }
+
+        e.preventDefault();   // prevent page scroll on touch
+
+        const pt  = getPoint(e);
+        const sdx = pt.x - lastX;   // raw screen delta
+        const sdy = pt.y - lastY;
+        lastX = pt.x;
+        lastY = pt.y;
+
+        const deg = window.mapRotationDeg || 0;
+
+        let mdx, mdy;
+        if (deg === 0) {
+            // No rotation — pass straight through (avoids float noise)
+            mdx = sdx;
+            mdy = sdy;
+        } else {
+            const rotated = rotateDelta(sdx, sdy, deg);
+            mdx = rotated.dx;
+            mdy = rotated.dy;
+        }
+
+        // panBy expects [x, y] where positive x = pan right, positive y = pan down
+        // We negate because dragging right should move the map left (pan left = content moves right)
+        map.panBy([-mdx, -mdy], { animate: false });
+
+        resetRecenterTimer();
+    }
+
+    // ── pointer up ───────────────────────────────────────────────────────────
+
+    function onEnd(e) {
+        if (!isDragging) return;
+        isDragging = false;
+        map.fire('dragend');
+        resetRecenterTimer();
+    }
+
+    // ── attach events (touch + mouse) ─────────────────────────────────────────
+
+    // Touch
+    container.addEventListener('touchstart',  onStart, { passive: true  });
+    container.addEventListener('touchmove',   onMove,  { passive: false }); // must be non-passive to preventDefault
+    container.addEventListener('touchend',    onEnd,   { passive: true  });
+    container.addEventListener('touchcancel', onEnd,   { passive: true  });
+
+    // Mouse (for desktop testing)
+    container.addEventListener('mousedown', onStart);
+    window   .addEventListener('mousemove', onMove);
+    window   .addEventListener('mouseup',   onEnd);
+
 })();
 
 // ── DETECT MANUAL MAP MOVEMENT ────────────────────────────────────────────────
