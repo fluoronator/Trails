@@ -282,6 +282,23 @@
     }
     .leaflet-control-zoom a:hover { background: var(--surface) !important; }
 
+    /* ── POI permanent label ── */
+    .poi-label {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      color: #000 !important;
+      font-size: 10px !important;
+      font-weight: 600 !important;
+      line-height: 1.2 !important;
+      padding: 0 !important;
+      max-width: 80px !important;
+      white-space: normal !important;
+      word-wrap: break-word !important;
+      text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff !important;
+    }
+    .poi-label::before { display: none !important; }
+
     /* Trail tooltip */
     .trail-tip {
       background: rgba(13,17,23,0.82) !important;
@@ -311,7 +328,7 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v13</div>
+  <div id="version-badge">v14</div>
 
   <div id="status-toast" class="hidden">Ready</div>
 
@@ -361,7 +378,7 @@ const PARKS = [
     geojsonUrl:    'trails.geojson',
     // If user is within this many metres of the park centre → Hiking mode.
     // Use a large number (e.g. 999999) to force Hiking mode while testing.
-    hikingRadius:  50000,          // ← EDIT for testing; production: ~3200
+    hikingRadius:  3200,
     defaultZoom:   17,
     defaultCenter: null,           // null = auto-computed from GeoJSON bounds
   }
@@ -454,12 +471,12 @@ function styleForPolygon(p) {
 }
 function makePOIIcon(p) {
   const c = p.stroke || '#e05c2a';
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="34" viewBox="0 0 26 34">
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="13" viewBox="0 0 26 34">
     <path d="M13 0C5.82 0 0 5.82 0 13c0 8.66 13 21 13 21S26 21.66 26 13C26 5.82 20.18 0 13 0z" fill="${c}" opacity="0.92"/>
     <circle cx="13" cy="13" r="5.5" fill="white" opacity="0.88"/>
   </svg>`;
   return L.divIcon({ html: svg, className: '',
-    iconSize: [26,34], iconAnchor: [13,34], popupAnchor: [0,-34] });
+    iconSize: [10,13], iconAnchor: [5,13], popupAnchor: [0,-13] });
 }
 function buildPopupHTML(p) {
   const raw  = (p.title || '').trim();
@@ -492,12 +509,30 @@ function loadPark(park) {
         pointToLayer: (f, ll) => L.marker(ll, { icon: makePOIIcon(f.properties || {}) }),
         onEachFeature: (f, layer) => {
           const p = f.properties || {}, t = f.geometry.type;
-          layer.bindPopup(buildPopupHTML(p), { maxWidth: 240 });
           const title = (p.title || '').trim();
           const isTS  = /^\d{1,2}:\d{2}:\d{2}/.test(title);
-          if (title && !isTS && (t === 'LineString' || t === 'MultiLineString')) {
-            layer.bindTooltip(title, { permanent: false, sticky: true,
-              direction: 'top', className: 'trail-tip' });
+          const cleanTitle = isTS ? '' : title;
+
+          if (t === 'Point') {
+            // Permanent label beside the pin — no popup
+            if (cleanTitle) {
+              layer.bindTooltip(cleanTitle, {
+                permanent:  true,
+                direction:  'right',
+                offset:     [6, -6],
+                className:  'poi-label',
+              });
+            }
+          } else if (t === 'LineString' || t === 'MultiLineString') {
+            // Hover tooltip on trail lines
+            if (cleanTitle) {
+              layer.bindTooltip(cleanTitle, {
+                permanent:  false,
+                sticky:     true,
+                direction:  'top',
+                className:  'trail-tip',
+              });
+            }
           }
         },
       }).addTo(map);
