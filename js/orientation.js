@@ -1,134 +1,111 @@
-// orientation.js — Compass-based map rotation (Hiking Mode only)
-//
-// APPROACH:
-//   Instead of trying to rotate Leaflet's internal canvas (which breaks tile
-//   seams and doesn't work well), we rotate the entire #map-rotate-wrapper div.
-//   The wrapper is oversized (150vmax) so corners never show through when rotated.
-//   All UI controls live in #ui-overlay which is NOT rotated, so they stay upright.
-//   The north arrow rotates counter to the map so it always points true north.
+// orientation.js — handles device heading and map rotation
 
-// currentHeading is kept as an UNBOUNDED float (can go beyond 360 or below 0).
-// This prevents the north-crossing spin: instead of normalizing to [0,360) and
-// letting the interpolation pick the long way around, we always accumulate the
-// shortest-angle delta so the value smoothly crosses the 0/360 boundary.
-let currentHeading  = 0;   // unbounded — do NOT normalize to [0,360)
-let targetHeading   = 0;   // also unbounded, updated each sensor event
-let smoothingActive = false;
+// ── STATE ─────────────────────────────────────────────────────────────────────
 
-const mapWrapper = document.getElementById("map-rotate-wrapper");
+let currentHeading = null;
+let smoothedHeading = null;
+let lastAppliedRotation = null;
 
-// ── SMOOTH ROTATION ────────────────────────────────────────────────────────────
+// Smoothing factor (lower = smoother, slower)
+const HEADING_SMOOTHING = 0.15;
 
-// Returns the shortest signed delta to go from angle `from` to angle `to`,
-// both treated as compass degrees. Result is always in (-180, +180].
-function shortestAngleDelta(from, to) {
-    return ((to - from + 540) % 360) - 180;
+// Minimum change required before updating DOM (degrees)
+const ROTATION_THRESHOLD = 0.5;
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────
+
+function normalizeAngle(angle) {
+    return (angle + 360) % 360;
 }
 
-function applyRotation(heading) {
-    // scale(2) keeps corners covered at all angles on any phone aspect ratio.
-    // rotate() spins the map. The wrapper is 100vw×100vh in layout space so
-    // it never inflates vw/vh calculations for the UI overlay.
-    mapWrapper.style.transform = `scale(2) rotate(${-heading}deg)`;
+// Smooth angle interpolation (handles wraparound at 360°)
+function smoothAngle(current, target, factor) {
+    if (current === null) return target;
 
-    // Expose the current visual rotation so gps.js can correct drag vectors.
-    window.mapRotationDeg = ((heading % 360) + 360) % 360;
+    let delta = target - current;
+
+    if (delta > 180) delta -= 360;
+    if (delta < -180) delta += 360;
+
+    return current + delta * factor;
 }
 
-// ── HEADING HANDLER ────────────────────────────────────────────────────────────
+function applyRotation(deg) {
+    const wrapper = document.getElementById("map-rotate-wrapper");
+    if (!wrapper) return;
+
+    wrapper.style.transform = `scale(2) rotate(${-deg}deg)`;
+    window.mapRotationDeg = deg;
+}
+
+// ── MAIN ORIENTATION HANDLER ──────────────────────────────────────────────────
 
 function handleOrientation(event) {
-    if (!window.isHikingMode) {
-        if (mapWrapper) {
-            mapWrapper.style.transform = 'scale(2) rotate(0deg)';
-        }
-        window.mapRotationDeg = 0;
+    let heading = null;
+
+    // iOS (webkitCompassHeading)
+    if (event.webkitCompassHeading !== undefined) {
+        heading = event.webkitCompassHeading;
+    }
+    // Android (alpha)
+    else if (event.alpha !== null) {
+        heading = 360 - event.alpha;
+    }
+
+    if (heading === null) return;
+
+    heading = normalizeAngle(heading);
+    currentHeading = heading;
+
+    // ── CONDITIONS TO ALLOW ROTATION ──────────────────────────────────────────
+
+    if (!window.isHikingMode) return;
+
+    // 🚫 Do NOT rotate if user is interacting or has manually moved map
+    if (window.isUserInteracting || window.userMovedMap) return;
+
+    // ── SMOOTHING ────────────────────────────────────────────────────────────
+
+    smoothedHeading = smoothAngle(smoothedHeading, currentHeading, HEADING_SMOOTHING);
+    smoothedHeading = normalizeAngle(smoothedHeading);
+
+    // ── AVOID MICRO-UPDATES ───────────────────────────────────────────────────
+
+    if (
+        lastAppliedRotation !== null &&
+        Math.abs(smoothedHeading - lastAppliedRotation) < ROTATION_THRESHOLD
+    ) {
         return;
     }
 
-    let rawHeading;
+    lastAppliedRotation = smoothedHeading;
 
-    // iOS: webkitCompassHeading is clockwise degrees from magnetic north — ideal.
-    if (typeof event.webkitCompassHeading === 'number' &&
-        event.webkitCompassHeading >= 0) {
-        rawHeading = event.webkitCompassHeading;
-    }
-    // Android/standard: alpha is CCW degrees from north. Convert to CW.
-    else if (event.alpha !== null && event.alpha !== undefined) {
-        rawHeading = (360 - event.alpha) % 360;
-    }
+    // ── APPLY ROTATION ────────────────────────────────────────────────────────
 
-    if (rawHeading === undefined) return;
-
-    // Instead of assigning rawHeading directly to targetHeading,
-    // advance targetHeading by the shortest delta from its current value.
-    // This keeps targetHeading unbounded and prevents wrap-around jumps.
-    const delta = shortestAngleDelta(targetHeading, rawHeading);
-    targetHeading += delta;
-
-    if (!smoothingActive) {
-        smoothingActive = true;
-        smoothRotation();
-    }
+    applyRotation(smoothedHeading);
 }
 
-function smoothRotation() {
-    // delta is always in (-180, +180] because both values are unbounded and
-    // currentHeading tracks targetHeading closely — no wrap-around possible.
-    const delta = targetHeading - currentHeading;
+// ── PERMISSION (iOS) ──────────────────────────────────────────────────────────
 
-    if (Math.abs(delta) < 0.3) {
-        currentHeading = targetHeading;
-        applyRotation(currentHeading);
-        smoothingActive = false;
-        return;
-    }
-
-    // Ease toward target — 0.15 keeps motion smooth without lag
-    currentHeading += delta * 0.15;
-
-    applyRotation(currentHeading);
-    requestAnimationFrame(smoothRotation);
-}
-
-// ── PERMISSION & EVENT LISTENER ────────────────────────────────────────────────
-
-function startOrientationTracking() {
-    window.addEventListener("deviceorientation", handleOrientation, true);
-}
-
-// iOS 13+ requires an explicit permission request on user gesture
-if (typeof DeviceOrientationEvent !== 'undefined' &&
-    typeof DeviceOrientationEvent.requestPermission === 'function') {
-
-    // Show a subtle prompt the first time the user taps the screen
-    let permissionGranted = false;
-
-    document.body.addEventListener("touchend", function requestPermission() {
-        if (permissionGranted) return;
+function enableOrientation() {
+    if (typeof DeviceOrientationEvent !== "undefined" &&
+        typeof DeviceOrientationEvent.requestPermission === "function") {
 
         DeviceOrientationEvent.requestPermission()
-            .then(state => {
-                if (state === 'granted') {
-                    permissionGranted = true;
-                    startOrientationTracking();
+            .then(response => {
+                if (response === "granted") {
+                    window.addEventListener("deviceorientation", handleOrientation, true);
+                } else {
+                    console.warn("Orientation permission denied");
                 }
             })
             .catch(console.error);
 
-        // Only fire once; remove after first attempt
-        document.body.removeEventListener("touchend", requestPermission);
-    }, { passive: true });
-
-} else {
-    // Android and desktop — just start listening
-    startOrientationTracking();
+    } else {
+        window.addEventListener("deviceorientation", handleOrientation, true);
+    }
 }
 
-// ── EXPOSE isHikingMode to window for orientation.js ─────────────────────────
-// gps.js sets window.isHikingMode by toggling the module-level var;
-// we read it here. It's set via the setMode() function in gps.js.
-// Ensure the variable exists to avoid reference errors on first load.
-if (typeof window.isHikingMode === 'undefined') {
-    window.isHikingMode = false;
-}
+// ── START ─────────────────────────────────────────────────────────────────────
+
+enableOrientation();
