@@ -229,6 +229,18 @@
     }
     #status-toast.hidden { opacity: 0; }
 
+    /* ── USER DOT OVERLAY (fixed at screen centre, outside rotating map) ── */
+    #user-dot-overlay {
+      position: absolute;
+      /* Centre of the viewport, offset by half the dot size */
+      top:  50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 500;
+      pointer-events: none;
+    }
+    #user-dot-overlay.hidden { display: none; }
+
     /* ── USER LOCATION DOT ── */
     .user-dot-wrap {
       width: 24px; height: 24px;
@@ -236,6 +248,8 @@
       background: rgba(88,166,255,0.22);
       display: flex; align-items: center; justify-content: center;
       animation: gpulse 2.2s infinite;
+      will-change: transform;
+      transform: translateZ(0);
     }
     .user-dot-inner {
       width: 13px; height: 13px;
@@ -243,6 +257,8 @@
       background: #58a6ff;
       border: 2.5px solid #fff;
       box-shadow: 0 0 6px rgba(88,166,255,0.8);
+      will-change: transform;
+      transform: translateZ(0);
     }
     @keyframes gpulse {
       0%,100% { box-shadow: 0 0 0 0 rgba(88,166,255,0.45); }
@@ -307,7 +323,7 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v10</div>
+  <div id="version-badge">v11</div>
 
   <div id="status-toast" class="hidden">Ready</div>
 
@@ -333,6 +349,14 @@
     </svg>
     Return to Me
   </button>
+
+  <!-- User location dot overlay — fixed at screen centre in hiking mode.
+       Lives outside the rotating wrapper so it never vibrates. -->
+  <div id="user-dot-overlay" class="hidden">
+    <div class="user-dot-wrap">
+      <div class="user-dot-inner"></div>
+    </div>
+  </div>
 
   <div id="bottom-bar">
     <div id="layer-group">
@@ -534,6 +558,12 @@ function placeOrMoveUser(latlng) {
   } else {
     userMarker.setLatLng(latlng);
   }
+  // In hiking mode the overlay dot is used; keep Leaflet marker invisible
+  if (S.isHiking && userMarker._icon) {
+    userMarker._icon.style.opacity = '0';
+  } else if (userMarker._icon) {
+    userMarker._icon.style.opacity = '1';
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -558,17 +588,24 @@ function setMode(mode) {
   const locBtn   = document.getElementById('locate-btn');
   const arrow    = document.getElementById('north-arrow');
   const wrapper  = document.getElementById('map-rotate-wrapper');
+  const dotOverlay = document.getElementById('user-dot-overlay');
 
   if (hiking) {
     badge.textContent = '⛰ Hiking';
     badge.className   = 'hiking';
     locBtn.classList.add('hidden');
     arrow.classList.remove('hidden');
+    // Use the fixed overlay dot — immune to map rotation jitter
+    dotOverlay.classList.remove('hidden');
+    if (userMarker) userMarker.setOpacity(0);
   } else {
     badge.textContent = '🗺 Browsing';
     badge.className   = 'browsing';
     locBtn.classList.remove('hidden');
     arrow.classList.add('hidden');
+    // Use the Leaflet marker dot in browsing mode (map isn't rotating)
+    dotOverlay.classList.add('hidden');
+    if (userMarker) userMarker.setOpacity(1);
     // Reset rotation when leaving hiking mode
     wrapper.style.transform = 'scale(2) rotate(0deg)';
     window.mapRotationDeg   = 0;
@@ -856,7 +893,7 @@ function applyRotation(heading) {
 
 function smoothRotation() {
   const delta = targetHeading - currentHeading;
-  if (Math.abs(delta) < 0.3) {
+  if (Math.abs(delta) < 1.5) {   // dead zone: ignore sub-1.5° jitter
     currentHeading = targetHeading;
     applyRotation(currentHeading);
     smoothingActive = false;
