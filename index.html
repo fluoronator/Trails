@@ -253,19 +253,6 @@
       55%      { box-shadow: 0 0 0 9px rgba(88,166,255,0); }
     }
 
-    /* ── LEAFLET POPUP OVERRIDES ── */
-    .leaflet-popup-content-wrapper {
-      background: var(--surface) !important;
-      color: var(--text) !important;
-      border: 1px solid var(--border) !important;
-      border-radius: 10px !important;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.55) !important;
-    }
-    .leaflet-popup-tip { background: var(--surface) !important; }
-    .leaflet-popup-content { margin: 10px 14px !important; }
-    .popup-title { font-weight: 700; font-size: 14px; margin-bottom: 3px; }
-    .popup-desc  { font-size: 12px; color: var(--muted); }
-    .leaflet-popup-close-button { color: var(--muted) !important; }
 
     .leaflet-control-attribution {
       background: rgba(13,17,23,0.75) !important;
@@ -284,9 +271,9 @@
 
     /* ── Trail name label ── */
     .trail-name-label {
-      font-size: 9px;
+      font-size: 7px;
       font-weight: 700;
-      letter-spacing: 0.06em;
+      letter-spacing: 0.04em;
       text-transform: uppercase;
       white-space: nowrap;
       text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 4px #fff,
@@ -304,7 +291,7 @@
       color: #000 !important;
       font-size: 8px !important;
       font-weight: 600 !important;
-      line-height: 1.2 !important;
+      line-height: 1.05 !important;
       padding: 0 !important;
       max-width: 60px !important;
       white-space: normal !important;
@@ -314,18 +301,6 @@
     .poi-label::before { display: none !important; }
     .poi-label-hidden  { display: none !important; }
 
-    /* Trail tooltip */
-    .trail-tip {
-      background: rgba(13,17,23,0.82) !important;
-      border: 1px solid var(--border) !important;
-      color: var(--text) !important;
-      font-size: 11px !important;
-      font-weight: 600 !important;
-      border-radius: 6px !important;
-      padding: 3px 8px !important;
-      box-shadow: none !important;
-    }
-    .trail-tip::before { display: none !important; }
   </style>
 </head>
 <body>
@@ -343,7 +318,7 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v18</div>
+  <div id="version-badge">v21</div>
 
   <div id="status-toast" class="hidden">Ready</div>
 
@@ -372,9 +347,9 @@
 
   <div id="bottom-bar">
     <div id="layer-group">
-      <button class="layer-btn active" data-layer="map">Map</button>
+      <button class="layer-btn"        data-layer="map">Map</button>
       <button class="layer-btn"        data-layer="topo">Topo</button>
-      <button class="layer-btn"        data-layer="sat">Sat</button>
+      <button class="layer-btn active" data-layer="sat">Sat</button>
     </div>
     <button id="locate-btn">Find Me</button>
   </div>
@@ -452,7 +427,7 @@ function setTileLayer(name) {
     b.classList.toggle('active', b.dataset.layer === name)
   );
 }
-setTileLayer('map');
+setTileLayer('sat');
 
 /* ═══════════════════════════════════════════════════════════════════
    TOAST
@@ -493,15 +468,6 @@ function makePOIIcon(p) {
   return L.divIcon({ html: svg, className: '',
     iconSize: [10,13], iconAnchor: [5,13], popupAnchor: [0,-13] });
 }
-function buildPopupHTML(p) {
-  const raw  = (p.title || '').trim();
-  const isTS = /^\d{1,2}:\d{2}:\d{2}/.test(raw);
-  const title = isTS ? '' : raw;
-  const desc  = (p.description || '').trim();
-  const showDesc = desc && !/^(Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Jan|Feb) /.test(desc);
-  return `<div class="popup-title">${title || '📍 Point of Interest'}</div>
-          ${showDesc ? `<div class="popup-desc">${desc}</div>` : ''}`;
-}
 
 /* ═══════════════════════════════════════════════════════════════════
    TRAIL LABELS
@@ -534,14 +500,16 @@ function lineMidpoint(coords) {
 }
 
 // Get the bearing angle (degrees) at the midpoint of a coordinate array
-// Uses a window of points around the midpoint for a smooth average angle
+// Uses projected pixel coordinates so the angle matches what appears on screen
 function lineAngleAtMid(coords) {
   const n = coords.length;
-  // Use points 10% before and after midpoint for a stable angle
-  const a = coords[Math.max(0, Math.floor(n * 0.4))];
-  const b = coords[Math.min(n-1, Math.floor(n * 0.6))];
-  let angle = Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI;
-  // Keep text right-side up — flip if angle would make text upside down
+  const ai = Math.max(0, Math.floor(n * 0.4));
+  const bi = Math.min(n - 1, Math.floor(n * 0.6));
+  // Convert lng/lat to pixel coords at current zoom so aspect ratio is correct
+  const a = map.latLngToContainerPoint(L.latLng(coords[ai][1], coords[ai][0]));
+  const b = map.latLngToContainerPoint(L.latLng(coords[bi][1], coords[bi][0]));
+  let angle = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+  // Keep text right-side up
   if (angle > 90)  angle -= 180;
   if (angle < -90) angle += 180;
   return angle;
@@ -574,7 +542,7 @@ function buildTrailLabels(geojsonData) {
     const latlng = L.latLng(mid[1], mid[0]);
     const html = `<div class="trail-name-label" style="transform:rotate(${angle}deg);color:${color};">${title}</div>`;
     const marker = L.marker(latlng, {
-      icon: L.divIcon({ html, className: '', iconSize: [120, 20], iconAnchor: [60, 10] }),
+      icon: L.divIcon({ html, className: '', iconSize: [60, 12], iconAnchor: [30, 6] }),
       interactive: false,
       zIndexOffset: -100,
     });
@@ -593,8 +561,8 @@ function updateTrailLabelVisibility() {
   });
 }
 
-map.on('zoomend', updateTrailLabelVisibility);
 let geojsonLayer = null;
+let lastGeojsonData = null;  // kept so trail labels can be rebuilt on zoom
 const poiLayers = [];   // all Point marker layers, for zoom-based label toggling
 
 // Labels visible at this zoom level and above
@@ -620,8 +588,12 @@ function updatePoiLabelVisibility() {
   });
 }
 
-map.on('zoomend', updatePoiLabelVisibility);
-
+map.on('zoomend', () => {
+  updatePoiLabelVisibility();
+  updateTrailLabelVisibility();
+  // Rebuild trail labels so angles are recalculated at the new zoom's pixel scale
+  if (lastGeojsonData) buildTrailLabels(lastGeojsonData);
+});
 function loadPark(park) {
   showToast('Loading trail data…', 0);
   fetch(park.geojsonUrl)
@@ -653,20 +625,12 @@ function loadPark(park) {
               layer.bindTooltip(cleanTitle, {
                 permanent:  true,
                 direction:  'right',
-                offset:     [6, -6],
+                offset:     [2, -4],
                 className:  'poi-label',
               });
             }
           } else if (t === 'LineString' || t === 'MultiLineString') {
-            // Hover tooltip on trail lines
-            if (cleanTitle) {
-              layer.bindTooltip(cleanTitle, {
-                permanent:  false,
-                sticky:     true,
-                direction:  'top',
-                className:  'trail-tip',
-              });
-            }
+            // No tooltip — trail names are shown as rotated labels via buildTrailLabels()
           }
         },
       }).addTo(map);
@@ -684,6 +648,7 @@ function loadPark(park) {
       // Use name from GeoJSON if present, otherwise fall back to config name
       const parkName = data.name || park.name;
       document.getElementById('park-name').textContent = '🥾 ' + parkName;
+      lastGeojsonData = data;
       showToast('Trails loaded ✓');
       buildTrailLabels(data);
       // Check label visibility at initial zoom
