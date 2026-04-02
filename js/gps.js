@@ -161,50 +161,6 @@ if (navigator.geolocation) {
     document.getElementById("modeText").textContent = "GPS not supported";
 }
 
-// ── ROTATION-AWARE PANNING ────────────────────────────────────────────────────
-//
-// Leaflet's Draggable computes a pixel offset (_newPos) for the map pane and
-// applies it via L.DomUtil.setPosition. It has no knowledge of our CSS rotation.
-// When the map is rotated, its "right" is our "up" (or whatever), so the pane
-// moves in the wrong screen direction even though the geographic pan is correct.
-//
-// The fix: after Leaflet computes _newPos (which is in map-pane pixel space,
-// always north-up), we intercept L.DomUtil.setPosition and rotate the offset
-// vector back into screen space before actually moving the pane element.
-// This keeps Leaflet's drag state, inertia, and event system fully intact.
-
-(function patchDomUtilSetPosition() {
-
-    const _origSetPosition = L.DomUtil.setPosition.bind(L.DomUtil);
-
-    L.DomUtil.setPosition = function(el, point) {
-        const deg = window.mapRotationDeg || 0;
-
-        // Only intercept calls that move the map pane, and only when rotated.
-        // The map pane is identified by having the 'leaflet-map-pane' class.
-        if (deg === 0 || !el.classList || !el.classList.contains('leaflet-map-pane')) {
-            return _origSetPosition(el, point);
-        }
-
-        // point is the new top-left offset of the map pane in container pixels.
-        // We need to rotate this offset vector so the visual pan direction
-        // matches the finger's screen direction.
-        //
-        // The map pane moves opposite to the pan: panning right moves the pane left.
-        // Our wrapper rotates by -deg, so pane offsets are in a rotated coordinate
-        // frame. To make pane movement feel aligned with finger direction, we rotate
-        // the offset by -deg (same direction as the wrapper rotation).
-        const rad = (-deg * Math.PI) / 180;
-        const cos = Math.cos(rad);
-        const sin = Math.sin(rad);
-
-        const rx = point.x * cos - point.y * sin;
-        const ry = point.x * sin + point.y * cos;
-
-        return _origSetPosition(el, L.point(rx, ry));
-    };
-
-})();
 
 // ── DETECT MANUAL MAP MOVEMENT ────────────────────────────────────────────────
 
