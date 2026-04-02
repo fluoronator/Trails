@@ -329,7 +329,7 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v15</div>
+  <div id="version-badge">v16</div>
 
   <div id="status-toast" class="hidden">Ready</div>
 
@@ -392,9 +392,9 @@ const TILE_DEFS = {
   map:  { url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
           opts: { attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 22 } },
   topo: { url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-          opts: { attribution: '© <a href="https://opentopomap.org">OpenTopoMap</a>', maxZoom: 17 } },
+          opts: { attribution: '© <a href="https://opentopomap.org">OpenTopoMap</a>', maxZoom: 22, maxNativeZoom: 17 } },
   sat:  { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-          opts: { attribution: '© <a href="https://www.esri.com">Esri</a>', maxZoom: 22 } },
+          opts: { attribution: '© <a href="https://www.esri.com">Esri</a>', maxZoom: 22, maxNativeZoom: 19 } },
 };
 
 /* ═══════════════════════════════════════════════════════════════════
