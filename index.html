@@ -307,7 +307,7 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v5</div>
+  <div id="version-badge">v6-debug</div>
 
   <div id="status-toast" class="hidden">Ready</div>
 
@@ -764,6 +764,8 @@ map.whenReady(function() {
     origOnDown(e);  // let Leaflet store _startPoint normally
     const h = currentHeading;
     if (!h) return;
+    // Log what Leaflet stored
+    console.log('_onDown fired, h=', h, '_startPoint=', draggable._startPoint, '_lastPoint=', draggable._lastPoint);
     // Rotate the stored _startPoint to match the rotated coord space
     if (draggable._startPoint) {
       const r = rotatePointAroundCenter(
@@ -771,13 +773,20 @@ map.whenReady(function() {
         draggable._startPoint.y,
         h
       );
+      console.log('rotating _startPoint from', draggable._startPoint, 'to', r);
       draggable._startPoint = L.point(r.x, r.y);
+    }
+    // Also rotate _lastPoint if it exists
+    if (draggable._lastPoint) {
+      const r = rotatePointAroundCenter(draggable._lastPoint.x, draggable._lastPoint.y, h);
+      draggable._lastPoint = L.point(r.x, r.y);
     }
   };
 
   // Wrap _onMove: rotate the incoming pointer position by +heading
   // so Leaflet's delta math (newPoint - startPoint) stays in rotated space
   const origOnMove = draggable._onMove.bind(draggable);
+  let moveCount = 0;
   draggable._onMove = function(e) {
     const h = currentHeading;
     if (!h) { origOnMove(e); return; }
@@ -787,10 +796,13 @@ map.whenReady(function() {
       const t = e.touches[0];
       const r = rotatePointAroundCenter(t.clientX, t.clientY, h);
       clientX = r.x; clientY = r.y;
+      if (moveCount < 3) console.log('_onMove touch #'+moveCount, 'raw:', t.clientX, t.clientY, 'rotated:', clientX, clientY, '_startPoint:', draggable._startPoint, '_lastPoint:', draggable._lastPoint);
     } else {
       const r = rotatePointAroundCenter(e.clientX, e.clientY, h);
       clientX = r.x; clientY = r.y;
+      if (moveCount < 3) console.log('_onMove mouse #'+moveCount, 'raw:', e.clientX, e.clientY, 'rotated:', clientX, clientY, '_startPoint:', draggable._startPoint, '_lastPoint:', draggable._lastPoint);
     }
+    moveCount++;
     origOnMove(makeSynth(e, clientX, clientY));
   };
 });
