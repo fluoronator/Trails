@@ -2,20 +2,25 @@
 
 // ── CONFIG ────────────────────────────────────────────────────────────────────
 
-window.MODE_DISTANCE = 90000;
+window.MODE_DISTANCE = 90000; // change to 3200 later
 const RECENTER_DELAY_MS = 4000;
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 
-let userMarker       = null;
-let userPulseMarker  = null;
-let userLatLng       = null;
-let hasCentered      = false;
-let isHikingMode     = false;
+let userMarker        = null;
+let userPulseMarker   = null;
+let userLatLng        = null;
+let hasCentered       = false;
+let isHikingMode      = false;
 
-let userMovedMap     = false;
+let userMovedMap      = false;
 let isUserInteracting = false;
-let recenterTimer    = null;
+let recenterTimer     = null;
+
+// expose globally for orientation.js
+window.isUserInteracting = false;
+window.userMovedMap = false;
+window.isHikingMode = false;
 
 // ── UI HELPERS ────────────────────────────────────────────────────────────────
 
@@ -28,14 +33,15 @@ function setMode(mode) {
     window.isHikingMode = isHikingMode;
 
     if (isHikingMode) {
-        modeBox.className  = "hiking";
+        modeBox.className = "hiking";
         modeIcon.textContent = "🥾";
         modeText.textContent = "Hiking Mode";
     } else {
-        modeBox.className  = "browse";
+        modeBox.className = "browse";
         modeIcon.textContent = "🗺";
         modeText.textContent = "Browse Mode";
 
+        // reset rotation when leaving hiking mode
         const wrapper = document.getElementById("map-rotate-wrapper");
         if (wrapper) wrapper.style.transform = 'scale(2) rotate(0deg)';
         window.mapRotationDeg = 0;
@@ -44,6 +50,8 @@ function setMode(mode) {
 
 function showRecenterBtn(show) {
     const btn = document.getElementById("recenterBtn");
+    if (!btn) return;
+
     if (show) btn.classList.remove("hidden");
     else btn.classList.add("hidden");
 }
@@ -58,6 +66,8 @@ function recenterToUser() {
     });
 
     userMovedMap = false;
+    window.userMovedMap = false;
+
     showRecenterBtn(false);
 }
 
@@ -72,13 +82,16 @@ function updateUserMarker(latlng) {
             iconAnchor: [8, 8]
         });
 
-        userPulseMarker = L.marker(latlng, { icon: pulseIcon, zIndexOffset: 900 }).addTo(map);
+        userPulseMarker = L.marker(latlng, {
+            icon: pulseIcon,
+            zIndexOffset: 900
+        }).addTo(map);
 
         userMarker = L.circleMarker(latlng, {
-            radius:      8,
-            color:       '#ffffff',
-            weight:      2.5,
-            fillColor:   '#007AFF',
+            radius: 8,
+            color: '#ffffff',
+            weight: 2.5,
+            fillColor: '#007AFF',
             fillOpacity: 1,
             zIndexOffset: 1000
         }).addTo(map);
@@ -92,9 +105,14 @@ function updateUserMarker(latlng) {
 
 function startUserInteraction() {
     isUserInteracting = true;
-    userMovedMap = true;
+    window.isUserInteracting = true;
 
-    if (isHikingMode) showRecenterBtn(true);
+    userMovedMap = true;
+    window.userMovedMap = true;
+
+    if (isHikingMode) {
+        showRecenterBtn(true);
+    }
 
     clearTimeout(recenterTimer);
 }
@@ -104,6 +122,7 @@ function stopUserInteractionSoon() {
 
     recenterTimer = setTimeout(() => {
         isUserInteracting = false;
+        window.isUserInteracting = false;
 
         if (isHikingMode && userMovedMap) {
             recenterToUser();
@@ -111,7 +130,7 @@ function stopUserInteractionSoon() {
     }, RECENTER_DELAY_MS);
 }
 
-// Detect ALL interaction types
+// detect ALL meaningful interactions
 map.on('mousedown', startUserInteraction);
 map.on('touchstart', startUserInteraction);
 map.on('wheel', startUserInteraction);
@@ -119,7 +138,7 @@ map.on('wheel', startUserInteraction);
 map.on('dragstart', startUserInteraction);
 map.on('zoomstart', startUserInteraction);
 
-// When interaction stops
+// interaction end
 map.on('dragend', stopUserInteractionSoon);
 map.on('zoomend', stopUserInteractionSoon);
 
@@ -147,7 +166,8 @@ if (navigator.geolocation) {
                     hasCentered = true;
                 }
             } else {
-                document.getElementById("modeText").textContent = "Locating…";
+                const el = document.getElementById("modeText");
+                if (el) el.textContent = "Locating…";
             }
 
             // ── INITIAL CENTER ───────────────────────────────────────────────
@@ -166,8 +186,10 @@ if (navigator.geolocation) {
         },
         (err) => {
             console.warn("GPS error:", err.message);
+
             if (!hasCentered) {
-                document.getElementById("modeText").textContent = "GPS unavailable";
+                const el = document.getElementById("modeText");
+                if (el) el.textContent = "GPS unavailable";
             }
         },
         {
@@ -177,5 +199,6 @@ if (navigator.geolocation) {
         }
     );
 } else {
-    document.getElementById("modeText").textContent = "GPS not supported";
+    const el = document.getElementById("modeText");
+    if (el) el.textContent = "GPS not supported";
 }
