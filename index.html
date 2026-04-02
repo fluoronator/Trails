@@ -1,107 +1,44 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8" />
-    <title>Trail Map v10</title>
+let mapWrapper = document.getElementById("mapWrapper");
 
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+function rotateMap(deg) {
+    mapWrapper.style.transform = "rotate(" + (-deg) + "deg)";
+}
 
-    <!-- Prevent caching -->
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-    <meta http-equiv="Pragma" content="no-cache" />
-    <meta http-equiv="Expires" content="0" />
+function isHikingMode() {
+    let modeBox = document.getElementById("modeBox");
+    return modeBox && modeBox.innerText.includes("Hiking");
+}
 
-    <!-- Leaflet CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+function handleOrientation(event) {
 
-    <!-- Your CSS -->
-    <link rel="stylesheet" href="css/style.css?v=1.5" />
+    let heading;
 
-    <style>
-        body {
-            margin: 0;
-            overflow: hidden;
+    if (event.webkitCompassHeading !== undefined) {
+        heading = event.webkitCompassHeading;
+    }
+    else if (event.alpha !== null) {
+        heading = 360 - event.alpha;
+    }
+
+    if (heading !== undefined) {
+        if (isHikingMode()) {
+            rotateMap(heading);
+        } else {
+            rotateMap(0);
         }
+    }
+}
 
-        /* ROTATING LAYER */
-        #mapWrapper {
-            position: fixed;
-            width: 100vw;
-            height: 100vh;
-            transform-origin: center center;
-        }
-
-        /* OVERSIZED MAP (fixes corner gaps) */
-        #map {
-            position: absolute;
-            width: 200vmax;
-            height: 200vmax;
-            left: 50%;
-            top: 50%;
-            transform: translate(-50%, -50%);
-        }
-
-        /* UI LAYER (NOT ROTATED) */
-        #uiLayer {
-            position: fixed;
-            inset: 0;
-            pointer-events: none;
-            z-index: 1000;
-        }
-
-        #modeBox, #versionBox {
-            pointer-events: auto;
-        }
-
-        #modeBox {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            background: white;
-            padding: 6px 10px;
-            border-radius: 6px;
-            font-size: 14px;
-            box-shadow: 0 0 5px rgba(0,0,0,0.3);
-        }
-
-        #versionBox {
-            position: absolute;
-            bottom: 10px;
-            right: 10px;
-            background: rgba(0,0,0,0.6);
-            color: white;
-            padding: 4px 8px;
-            border-radius: 6px;
-            font-size: 12px;
-            font-family: monospace;
-        }
-
-        /* KEEP LEAFLET CONTROLS ABOVE MAP BUT NOT ROTATED */
-        .leaflet-control-container {
-            position: fixed !important;
-            z-index: 1001;
-        }
-    </style>
-</head>
-
-<body>
-
-<div id="mapWrapper">
-    <div id="map"></div>
-</div>
-
-<div id="uiLayer">
-    <div id="modeBox">Loading...</div>
-    <div id="versionBox">v10</div>
-</div>
-
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet-textpath@1.2.3/leaflet.textpath.js"></script>
-
-<script src="js/map.js?v=1.5"></script>
-<script src="js/trails.js?v=1.5"></script>
-<script src="js/gps.js?v=1.5"></script>
-<script src="js/orientation.js?v=1.5"></script>
-
-</body>
-</html>
+// permission (unchanged)
+if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+    document.body.addEventListener("click", function() {
+        DeviceOrientationEvent.requestPermission()
+        .then(function(permissionState) {
+            if (permissionState === 'granted') {
+                window.addEventListener("deviceorientation", handleOrientation);
+            }
+        });
+    }, { once: true });
+} else {
+    window.addEventListener("deviceorientation", handleOrientation);
+}

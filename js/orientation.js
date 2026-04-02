@@ -1,7 +1,21 @@
-let mapWrapper = document.getElementById("mapWrapper");
+// orientation.js
+
+let mapPane = null;
+
+function getMapPane() {
+    if (!mapPane && map) {
+        mapPane = map.getPane('mapPane');
+    }
+    return mapPane;
+}
 
 function rotateMap(deg) {
-    mapWrapper.style.transform = "rotate(" + (-deg) + "deg)";
+    const pane = getMapPane();
+
+    if (pane) {
+        pane.style.transformOrigin = "50% 50%";
+        pane.style.transform = "rotate(" + (-deg) + "deg)";
+    }
 }
 
 function isHikingMode() {
@@ -21,6 +35,7 @@ function handleOrientation(event) {
     }
 
     if (heading !== undefined) {
+
         if (isHikingMode()) {
             rotateMap(heading);
         } else {
@@ -29,7 +44,7 @@ function handleOrientation(event) {
     }
 }
 
-// permission (unchanged)
+// permission handling
 if (typeof DeviceOrientationEvent.requestPermission === 'function') {
     document.body.addEventListener("click", function() {
         DeviceOrientationEvent.requestPermission()
