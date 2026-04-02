@@ -311,7 +311,7 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v12</div>
+  <div id="version-badge">v13</div>
 
   <div id="status-toast" class="hidden">Ready</div>
 
@@ -512,7 +512,9 @@ function loadPark(park) {
         setTimeout(() => { S.defaultZoom = map.getZoom(); }, 300);
       }
 
-      document.getElementById('park-name').textContent = '🥾 ' + park.name;
+      // Use name from GeoJSON if present, otherwise fall back to config name
+      const parkName = data.name || park.name;
+      document.getElementById('park-name').textContent = '🥾 ' + parkName;
       showToast('Trails loaded ✓');
       startGeolocation();
     })
