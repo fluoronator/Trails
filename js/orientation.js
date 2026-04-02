@@ -33,7 +33,8 @@ function applyRotation(heading) {
     mapWrapper.style.transform = `scale(2) rotate(${-heading}deg)`;
 
     // North arrow counter-rotates to always visually point true north.
-    northArrow.style.transform = `rotate(${heading}deg)`;
+    // northArrow.style.transform = `rotate(${heading}deg)`;
+    northArrow.style.transform = `rotate(${heading + window.mapRotationDeg}deg)`;
 
     // Expose the current visual rotation so gps.js can correct drag vectors.
     window.mapRotationDeg = ((heading % 360) + 360) % 360;
@@ -59,7 +60,7 @@ function handleOrientation(event) {
     }
     // Android/standard: alpha is CCW degrees from north. Convert to CW.
     else if (event.alpha !== null && event.alpha !== undefined) {
-        rawHeading = event.alpha;
+        rawHeading = (360 - event.alpha) % 360;
     }
 
     if (rawHeading === undefined) return;
