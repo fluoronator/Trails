@@ -33,8 +33,10 @@ function applyRotation(heading) {
     mapWrapper.style.transform = `scale(2) rotate(${-heading}deg)`;
 
     // North arrow counter-rotates to always visually point true north.
-    const normalizedHeading = ((heading % 360) + 360) % 360;
-    northArrow.style.transform = `rotate(${normalizedHeading}deg)`;
+    // The map wrapper is already rotated by -heading, so the arrow only needs
+    // to rotate by +heading (not a full independent heading) to appear upright.
+    // Using `heading` directly (unbounded) avoids any normalization artifact.
+    northArrow.style.transform = `rotate(${heading}deg)`;
 
     // Expose the current visual rotation so gps.js can correct drag vectors.
     window.mapRotationDeg = ((heading % 360) + 360) % 360;
