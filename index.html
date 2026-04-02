@@ -282,6 +282,20 @@
     }
     .leaflet-control-zoom a:hover { background: var(--surface) !important; }
 
+    /* ── Trail name label ── */
+    .trail-name-label {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 4px #fff,
+                   1px 1px 0 #fff, -1px -1px 0 #fff;
+      opacity: 0.9;
+      pointer-events: none;
+      transform-origin: center center;
+    }
+
     /* ── POI permanent label ── */
     .poi-label {
       background: transparent !important;
@@ -329,7 +343,7 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v17</div>
+  <div id="version-badge">v18</div>
 
   <div id="status-toast" class="hidden">Ready</div>
 
@@ -490,8 +504,96 @@ function buildPopupHTML(p) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   LOAD GEOJSON
+   TRAIL LABELS
+   One centred label per named trail, rotated to follow the line.
 ════════════════════════════════════════════════════════════════════ */
+let trailLabelLayer = null;
+const TRAIL_LABEL_MIN_ZOOM = 15;  // hide labels when zoomed out
+
+// Get the coordinate at the midpoint of a LineString coordinate array
+function lineMidpoint(coords) {
+  // Calculate total length, then walk to the halfway point
+  let total = 0;
+  for (let i = 1; i < coords.length; i++) {
+    const dx = coords[i][0] - coords[i-1][0];
+    const dy = coords[i][1] - coords[i-1][1];
+    total += Math.sqrt(dx*dx + dy*dy);
+  }
+  let half = total / 2;
+  for (let i = 1; i < coords.length; i++) {
+    const dx = coords[i][0] - coords[i-1][0];
+    const dy = coords[i][1] - coords[i-1][1];
+    const seg = Math.sqrt(dx*dx + dy*dy);
+    if (half <= seg) {
+      const t = half / seg;
+      return [coords[i-1][0] + dx*t, coords[i-1][1] + dy*t];
+    }
+    half -= seg;
+  }
+  return coords[Math.floor(coords.length / 2)];
+}
+
+// Get the bearing angle (degrees) at the midpoint of a coordinate array
+// Uses a window of points around the midpoint for a smooth average angle
+function lineAngleAtMid(coords) {
+  const n = coords.length;
+  // Use points 10% before and after midpoint for a stable angle
+  const a = coords[Math.max(0, Math.floor(n * 0.4))];
+  const b = coords[Math.min(n-1, Math.floor(n * 0.6))];
+  let angle = Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI;
+  // Keep text right-side up — flip if angle would make text upside down
+  if (angle > 90)  angle -= 180;
+  if (angle < -90) angle += 180;
+  return angle;
+}
+
+function buildTrailLabels(geojsonData) {
+  if (trailLabelLayer) map.removeLayer(trailLabelLayer);
+  trailLabelLayer = L.layerGroup();
+  const seen = new Set();
+
+  geojsonData.features.forEach(f => {
+    const p = f.properties || {};
+    const t = f.geometry.type;
+    if (t !== 'LineString' && t !== 'MultiLineString') return;
+
+    const title = (p.title || '').trim();
+    const isTS  = /^\d{1,2}:\d{2}:\d{2}/.test(title);
+    if (!title || isTS) return;
+    if (seen.has(title)) return;  // one label per unique trail name
+    seen.add(title);
+
+    const coords = t === 'LineString'
+      ? f.geometry.coordinates
+      : f.geometry.coordinates[0];  // first segment of MultiLineString
+
+    const mid   = lineMidpoint(coords);
+    const angle = lineAngleAtMid(coords);
+    const color = p.stroke || '#333';
+
+    const latlng = L.latLng(mid[1], mid[0]);
+    const html = `<div class="trail-name-label" style="transform:rotate(${angle}deg);color:${color};">${title}</div>`;
+    const marker = L.marker(latlng, {
+      icon: L.divIcon({ html, className: '', iconSize: [120, 20], iconAnchor: [60, 10] }),
+      interactive: false,
+      zIndexOffset: -100,
+    });
+    trailLabelLayer.addLayer(marker);
+  });
+
+  trailLabelLayer.addTo(map);
+  updateTrailLabelVisibility();
+}
+
+function updateTrailLabelVisibility() {
+  if (!trailLabelLayer) return;
+  const show = map.getZoom() >= TRAIL_LABEL_MIN_ZOOM;
+  trailLabelLayer.eachLayer(layer => {
+    if (layer._icon) layer._icon.style.display = show ? '' : 'none';
+  });
+}
+
+map.on('zoomend', updateTrailLabelVisibility);
 let geojsonLayer = null;
 const poiLayers = [];   // all Point marker layers, for zoom-based label toggling
 
@@ -583,6 +685,7 @@ function loadPark(park) {
       const parkName = data.name || park.name;
       document.getElementById('park-name').textContent = '🥾 ' + parkName;
       showToast('Trails loaded ✓');
+      buildTrailLabels(data);
       // Check label visibility at initial zoom
       setTimeout(updatePoiLabelVisibility, 800);
       startGeolocation();
