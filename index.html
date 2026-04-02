@@ -197,25 +197,6 @@
     #locate-btn.go-park { background: var(--orange); }
     #locate-btn.hidden  { display: none; }
 
-    /* ── DEBUG PANEL ── */
-    #debug-panel {
-      position: absolute;
-      top: 100px; left: 8px; right: 8px;
-      background: rgba(0,0,0,0.82);
-      color: #0f0;
-      font-family: monospace;
-      font-size: 11px;
-      line-height: 1.5;
-      padding: 8px 10px;
-      border-radius: 8px;
-      border: 1px solid #0f0;
-      z-index: 2000;
-      pointer-events: none;
-      white-space: pre-wrap;
-      max-height: 260px;
-      overflow: hidden;
-    }
-
     /* ── VERSION BADGE ── */
     #version-badge {
       position: absolute;
@@ -326,8 +307,7 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v9-debug</div>
-  <div id="debug-panel"></div>
+  <div id="version-badge">v10</div>
 
   <div id="status-toast" class="hidden">Ready</div>
 
@@ -448,17 +428,6 @@ function showToast(msg, ms = TOAST_MS) {
   el.classList.remove('hidden');
   clearTimeout(toastTimer);
   if (ms > 0) toastTimer = setTimeout(() => el.classList.add('hidden'), ms);
-}
-
-/* ═══════════════════════════════════════════════════════════════════
-   ON-SCREEN DEBUG LOG
-════════════════════════════════════════════════════════════════════ */
-const debugLines = [];
-function dbg(msg) {
-  debugLines.push(msg);
-  if (debugLines.length > 12) debugLines.shift();
-  const el = document.getElementById('debug-panel');
-  if (el) el.textContent = debugLines.join('\n');
 }
 
 
@@ -653,6 +622,11 @@ map.on('zoomstart', e => {
 /* ═══════════════════════════════════════════════════════════════════
    GEOLOCATION
 ════════════════════════════════════════════════════════════════════ */
+
+// Minimum movement thresholds to filter GPS jitter
+const MIN_MOVE_METRES_DOT    = 1;   // below this, don't even move the dot
+const MIN_MOVE_METRES_FOLLOW = 3;   // below this, don't pan the map
+
 function startGeolocation() {
   if (!navigator.geolocation) {
     showToast('Geolocation not supported');
@@ -664,8 +638,20 @@ function startGeolocation() {
   navigator.geolocation.watchPosition(
     pos => {
       const latlng = L.latLng(pos.coords.latitude, pos.coords.longitude);
+
+      // --- Jitter filter ---
+      const prevLatLng = S.userLatLng;
+      const movedMetres = prevLatLng ? metreBetween(
+        prevLatLng.lat, prevLatLng.lng, latlng.lat, latlng.lng
+      ) : Infinity;
+
+      // Always store latest position for recenter button accuracy
       S.userLatLng = latlng;
-      placeOrMoveUser(latlng);
+
+      // Only move the dot if position changed meaningfully
+      if (movedMetres >= MIN_MOVE_METRES_DOT) {
+        placeOrMoveUser(latlng);
+      }
 
       // Mode detection (only once park centre is known)
       if (S.parkCenter) {
@@ -673,16 +659,14 @@ function startGeolocation() {
         const shouldHike = dist <= S.park.hikingRadius;
         const wasHiking  = S.isHiking;
         setMode(shouldHike ? 'hiking' : 'browsing');
-
-        // On first entry into hiking mode, snap to user
         if (shouldHike && !wasHiking && !S.hasCentered) {
           map.setView(latlng, S.defaultZoom);
           S.hasCentered = true;
         }
       }
 
-      // Auto-follow in hiking mode when user hasn't manually panned
-      if (S.isHiking && !S.userMovedMap) {
+      // Only pan the map if moved enough to matter — eliminates GPS jitter vibration
+      if (S.isHiking && !S.userMovedMap && movedMetres >= MIN_MOVE_METRES_FOLLOW) {
         map.panTo(latlng, { animate: true, duration: 0.5 });
       }
 
@@ -796,12 +780,10 @@ map.whenReady(function() {
   let rotatedStartY = null;
 
   const origOnMove = draggable._onMove.bind(draggable);
-  let moveCount = 0;
   draggable._onMove = function(e) {
     const h = currentHeading;
     if (!h) { origOnMove(e); return; }
 
-    // Get raw pointer position
     let rawX, rawY;
     if (e.touches && e.touches.length > 0) {
       rawX = e.touches[0].clientX;
@@ -817,17 +799,14 @@ map.whenReady(function() {
       Math.abs(rawY - lastRawY) > 20;
 
     if (isNewDrag) {
-      // New drag started — rotate the current _startPoint once and freeze it
       const sp = draggable._startPoint;
       if (sp) {
         const r = rotatePointAroundCenter(sp.x, sp.y, h);
         rotatedStartX = r.x;
         rotatedStartY = r.y;
         draggable._startPoint = L.point(rotatedStartX, rotatedStartY);
-        if (moveCount < 12) dbg(`NEW DRAG: rawStart=${sp.x.toFixed(0)},${sp.y.toFixed(0)} → rotStart=${rotatedStartX.toFixed(0)},${rotatedStartY.toFixed(0)}`);
       }
     } else {
-      // Continuing drag — keep _startPoint at our frozen rotated value
       if (rotatedStartX !== null) {
         draggable._startPoint = L.point(rotatedStartX, rotatedStartY);
       }
@@ -836,13 +815,7 @@ map.whenReady(function() {
     lastRawX = rawX;
     lastRawY = rawY;
 
-    // Rotate the current pointer position
     const rot = rotatePointAroundCenter(rawX, rawY, h);
-    if (moveCount < 12) {
-      dbg(`MOVE#${moveCount} raw=${rawX.toFixed(0)},${rawY.toFixed(0)} rot=${rot.x.toFixed(0)},${rot.y.toFixed(0)} delta=${(rot.x-rotatedStartX).toFixed(0)},${(rot.y-rotatedStartY).toFixed(0)}`);
-    }
-    moveCount++;
-
     origOnMove(makeSynth(e, rot.x, rot.y));
   };
 
