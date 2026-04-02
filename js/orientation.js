@@ -54,21 +54,33 @@ function handleOrientation(event) {
 
     let rawHeading;
 
-    // iOS: webkitCompassHeading is clockwise degrees from magnetic north — ideal.
+    // iOS: webkitCompassHeading is clockwise degrees from magnetic north
     if (typeof event.webkitCompassHeading === 'number' &&
         event.webkitCompassHeading >= 0) {
-        rawHeading = event.webkitCompassHeading;
+
+        let heading = event.webkitCompassHeading;
+
+        // Adjust for device screen orientation (important for iPhone)
+        const orientation = window.orientation || 0;
+
+        if (orientation === 90) {
+            heading += 90;
+        } else if (orientation === -90) {
+            heading -= 90;
+        } else if (orientation === 180) {
+            heading += 180;
+        }
+
+        rawHeading = (heading + 360) % 360;
     }
-    // Android/standard: alpha is CCW degrees from north. Convert to CW.
+    // Android/standard
     else if (event.alpha !== null && event.alpha !== undefined) {
-        rawHeading = (360 - event.alpha) % 360;
+        rawHeading = event.alpha; // corrected earlier
     }
 
     if (rawHeading === undefined) return;
 
-    // Instead of assigning rawHeading directly to targetHeading,
-    // advance targetHeading by the shortest delta from its current value.
-    // This keeps targetHeading unbounded and prevents wrap-around jumps.
+    // Smooth transition (unchanged)
     const delta = shortestAngleDelta(targetHeading, rawHeading);
     targetHeading += delta;
 
