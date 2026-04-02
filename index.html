@@ -329,7 +329,7 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v16</div>
+  <div id="version-badge">v17</div>
 
   <div id="status-toast" class="hidden">Ready</div>
 
@@ -497,14 +497,24 @@ const poiLayers = [];   // all Point marker layers, for zoom-based label togglin
 
 // Labels visible at this zoom level and above
 const POI_LABEL_MIN_ZOOM = 17;
+// Icons visible at this zoom level and above (a bit lower than labels)
+const POI_ICON_MIN_ZOOM  = 15;
 
 function updatePoiLabelVisibility() {
-  const show = map.getZoom() >= POI_LABEL_MIN_ZOOM;
+  const zoom      = map.getZoom();
+  const showLabel = zoom >= POI_LABEL_MIN_ZOOM;
+  const showIcon  = zoom >= POI_ICON_MIN_ZOOM;
   poiLayers.forEach(layer => {
+    // Toggle label
     const tt = layer.getTooltip();
-    if (!tt) return;
-    const el = tt.getElement();
-    if (el) el.classList.toggle('poi-label-hidden', !show);
+    if (tt) {
+      const el = tt.getElement();
+      if (el) el.classList.toggle('poi-label-hidden', !showLabel);
+    }
+    // Toggle icon
+    if (layer._icon) {
+      layer._icon.style.display = showIcon ? '' : 'none';
+    }
   });
 }
 
