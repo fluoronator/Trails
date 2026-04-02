@@ -16,7 +16,6 @@ let targetHeading   = 0;   // also unbounded, updated each sensor event
 let smoothingActive = false;
 
 const mapWrapper = document.getElementById("map-rotate-wrapper");
-const northArrow  = document.getElementById("northArrow");
 
 // ── SMOOTH ROTATION ────────────────────────────────────────────────────────────
 
@@ -31,13 +30,6 @@ function applyRotation(heading) {
     // rotate() spins the map. The wrapper is 100vw×100vh in layout space so
     // it never inflates vw/vh calculations for the UI overlay.
     mapWrapper.style.transform = `scale(2) rotate(${-heading}deg)`;
-
-    // North arrow lives in #ui-overlay which is NOT rotated with the map.
-    // The map rotates -heading (CCW), so north on the map drifts to the right
-    // of screen when heading=90. The arrow must follow: rotate(+heading).
-    // Example: phone faces east (heading=90) → map rotated -90° → north is
-    // at the right edge of screen → arrow rotates +90° to point right. ✓
-    northArrow.style.transform = `rotate(${heading}deg)`;
 
     // Expose the current visual rotation so gps.js can correct drag vectors.
     window.mapRotationDeg = ((heading % 360) + 360) % 360;

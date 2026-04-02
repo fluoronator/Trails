@@ -25,7 +25,6 @@ function setMode(mode) {
     const modeBox  = document.getElementById("modeBox");
     const modeIcon = document.getElementById("modeIcon");
     const modeText = document.getElementById("modeText");
-    const northArrow = document.getElementById("northArrow");
 
     isHikingMode = (mode === "hiking");
     window.isHikingMode = isHikingMode;
@@ -34,12 +33,10 @@ function setMode(mode) {
         modeBox.className  = "hiking";
         modeIcon.textContent = "🥾";
         modeText.textContent = "Hiking Mode";
-        northArrow.classList.remove("hidden");
     } else {
         modeBox.className  = "browse";
         modeIcon.textContent = "🗺";
         modeText.textContent = "Browse Mode";
-        northArrow.classList.add("hidden");
         // In browse mode, reset rotation
         const wrapper = document.getElementById("map-rotate-wrapper");
         if (wrapper) wrapper.style.transform = 'scale(2) rotate(0deg)';
