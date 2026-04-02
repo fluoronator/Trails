@@ -38,7 +38,7 @@
         <span id="modeText">Locating…</span>
     </div>
 
-    <!-- Re-center button (appears when user pans away in hiking mode) -->
+    <!-- Hiking mode: appears when user pans away, flies back to user -->
     <button id="recenterBtn" class="hidden" onclick="recenterToUser()">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="4"/>
@@ -48,6 +48,18 @@
             <line x1="18" y1="12" x2="22" y2="12"/>
         </svg>
         Return to Me
+    </button>
+
+    <!-- Browse mode: always visible, toggles between Find Me and Go to Park -->
+    <button id="browseNavBtn" class="hidden" onclick="browseNavTap()">
+        <svg id="browseNavIcon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="4"/>
+            <line x1="12" y1="2" x2="12" y2="6"/>
+            <line x1="12" y1="18" x2="12" y2="22"/>
+            <line x1="2" y1="12" x2="6" y2="12"/>
+            <line x1="18" y1="12" x2="22" y2="12"/>
+        </svg>
+        <span id="browseNavLabel">Find Me</span>
     </button>
 
     <!-- Basemap selector -->
