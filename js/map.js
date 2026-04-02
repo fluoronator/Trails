@@ -1,20 +1,21 @@
-// map.js
+// map.js — Map initialization and basemap switching
 
-// --- Base Layers ---
+// ── BASE LAYERS ───────────────────────────────────────────────────────────────
+
 const standardLayer = L.tileLayer(
     "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
     {
         maxZoom: 21,
-        attribution: "&copy; OpenStreetMap contributors"
+        attribution: "© OpenStreetMap contributors"
     }
 );
 
 const topoLayer = L.tileLayer(
     "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
     {
-        maxNativeZoom: 17, // actual tile limit
-        maxZoom: 21,       // allow zoom beyond (stretch)
-        attribution: "&copy; OpenTopoMap contributors"
+        maxNativeZoom: 17,
+        maxZoom: 21,
+        attribution: "© OpenTopoMap contributors"
     }
 );
 
@@ -22,30 +23,41 @@ const satelliteLayer = L.tileLayer(
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     {
         maxZoom: 21,
-        attribution: "Tiles &copy; Esri"
+        attribution: "Tiles © Esri"
     }
 );
 
-// --- Map Init ---
+// ── MAP INIT ──────────────────────────────────────────────────────────────────
+
 const map = L.map("map", {
     center: [34.7, -86.9],
-    zoom: 13,
+    zoom: 14,
     maxZoom: 21,
     layers: [standardLayer],
-    zoomControl: false
+    zoomControl: false,
+    attributionControl: true
 });
 
-// Move zoom control to bottom right
-L.control.zoom({ position: "bottomright" }).addTo(map);
+// Track current layer
+let currentBaseLayer = standardLayer;
 
-// --- Layer Control ---
-const baseMaps = {
-    "Standard": standardLayer,
-    "Topo": topoLayer,
-    "Satellite": satelliteLayer
+// ── BASEMAP SWITCHER ──────────────────────────────────────────────────────────
+
+const layerMap = {
+    standard:  standardLayer,
+    topo:      topoLayer,
+    satellite: satelliteLayer
 };
 
-L.control.layers(baseMaps, null, {
-    position: "topright",
-    collapsed: true
-}).addTo(map);
+function switchBasemap(name, btn) {
+    const newLayer = layerMap[name];
+    if (!newLayer || newLayer === currentBaseLayer) return;
+
+    map.removeLayer(currentBaseLayer);
+    map.addLayer(newLayer);
+    currentBaseLayer = newLayer;
+
+    // Update active button state
+    document.querySelectorAll('.basemap-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+}

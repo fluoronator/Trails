@@ -1,118 +1,143 @@
+// trails.js — Load GeoJSON trails and POIs onto the map
+
 window.trailCenter = null;
 
-// Load parks list
+// ── LOAD TRAILS ───────────────────────────────────────────────────────────────
+
 fetch('data/parks.json')
-.then(r => r.json())
-.then(parks => {
+    .then(r => r.json())
+    .then(parks => {
+        const park = parks[0];
+        return fetch(park.file);
+    })
+    .then(r => r.json())
+    .then(data => {
 
-    let park = parks[0];
-    return fetch(park.file);
+        const trails = L.geoJSON(data, {
 
-})
-.then(r => r.json())
-.then(data => {
+            // ── LINE STYLING from GeoJSON properties ──────────────────────────
+            style: function(feature) {
+                const p = feature.properties || {};
+                return {
+                    color:   p.stroke          || "#00ff88",
+                    weight:  Number(p["stroke-width"]) || 4,
+                    opacity: p["stroke-opacity"] !== undefined ? p["stroke-opacity"] : 1,
+                    lineJoin: "round",
+                    lineCap:  "round"
+                };
+            },
 
-    let trails = L.geoJSON(data, {
+            // ── POI MARKERS ────────────────────────────────────────────────────
+            pointToLayer: function(feature, latlng) {
+                const p = feature.properties || {};
 
-        // 🎨 Use CalTopo styling
-        style: function(feature) {
-            let p = feature.properties || {};
+                // Custom SVG pin using the trail color or default red
+                const color = p.stroke || "#e74c3c";
+                const svgPin = `
+                    <svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36">
+                        <path d="M14 0C6.27 0 0 6.27 0 14c0 9.94 14 22 14 22S28 23.94 28 14C28 6.27 21.73 0 14 0z"
+                              fill="${color}" stroke="rgba(0,0,0,0.3)" stroke-width="1"/>
+                        <circle cx="14" cy="14" r="6" fill="white" fill-opacity="0.9"/>
+                    </svg>`;
 
-            return {
-                color: p.stroke || "#00ff88",
-                weight: Number(p["stroke-width"]) || 4,
-                opacity: p["stroke-opacity"] || 1
-            };
-        },
+                const icon = L.divIcon({
+                    html: svgPin,
+                    className: '',
+                    iconSize:   [28, 36],
+                    iconAnchor: [14, 36],
+                    popupAnchor: [0, -36]
+                });
 
-        // 📍 Default red pins
-        pointToLayer: function(feature, latlng) {
+                return L.marker(latlng, { icon });
+            },
 
-            let redIcon = L.icon({
-                iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-                shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+            // ── POPUPS & LABELS ────────────────────────────────────────────────
+            onEachFeature: function(feature, layer) {
+                const p = feature.properties || {};
 
-                iconSize: [25, 41],
-                iconAnchor: [12, 41],
-                popupAnchor: [1, -34],
-                shadowSize: [41, 41]
-            });
+                // POI points
+                if (feature.geometry.type === "Point") {
+                    const title = p.title || p.name || "";
+                    if (title.trim()) {
+                        // Tooltip label (shown when zoomed in)
+                        layer.bindTooltip(title.trim(), {
+                            permanent: false,
+                            direction:  "right",
+                            offset:     [10, -18],
+                            className:  "poi-label"
+                        });
 
-            return L.marker(latlng, { icon: redIcon });
-        },
+                        // Popup with description
+                        const desc = p.description || p.desc || "";
+                        const popupContent = `
+                            <div style="font-family:'Inter',sans-serif; min-width:140px;">
+                                <b style="font-family:'Rajdhani',sans-serif; font-size:15px;">${title.trim()}</b>
+                                ${desc ? `<p style="margin:6px 0 0; font-size:12px; color:#555;">${desc}</p>` : ""}
+                            </div>`;
+                        layer.bindPopup(popupContent);
+                    }
+                }
 
-        onEachFeature: function(feature, layer) {
-            let p = feature.properties || {};
+                // Trail lines — draw name along path
+                if (feature.geometry.type === "LineString") {
+                    const title = p.title || p.name || "";
+                    if (title.trim() && layer.setText) {
+                        layer.setText(title.trim(), {
+                            repeat:      false,
+                            center:      true,
+                            offset:      -5,
+                            orientation: "flip",
+                            attributes: {
+                                fill:           p.stroke || "#00ff88",
+                                "font-family":  "Rajdhani, sans-serif",
+                                "font-size":    "13",
+                                "font-weight":  "700",
+                                "letter-spacing": "1",
+                                "paint-order":  "stroke",
+                                "stroke":       "rgba(0,0,0,0.7)",
+                                "stroke-width": "3"
+                            }
+                        });
+                    }
 
-            // 🟢 POIs
-            if (feature.geometry.type === "Point") {
-
-                if (p.title) {
-
-                    layer.bindTooltip(p.title, {
-                        permanent: false,
-                        direction: "right",
-                        offset: [10, 0],
-                        className: "poi-label"
-                    });
-
-                    layer.bindPopup("<b>" + p.title + "</b>");
+                    // Popup on trail click
+                    const name = p.title || p.name || "Trail";
+                    if (name.trim()) {
+                        layer.bindPopup(`<b style="font-family:'Rajdhani',sans-serif; font-size:15px;">${name.trim()}</b>`);
+                    }
                 }
             }
 
-            // 🟡 TRAILS — curved text
-            if (feature.geometry.type === "LineString") {
+        }).addTo(map);
 
-                if (p.title && layer.setText) {
-
-                    layer.setText(p.title, {
-                        repeat: false,
-                        center: true,
-                        offset: 6,
-                        orientation: 0,
-
-                        attributes: {
-                            fill: p.stroke || "#00ff88",
-                            "font-size": "14",
-                            "font-weight": "bold",
-                            "letter-spacing": "1",
-                            "word-spacing": "2",
-                            "text-shadow": "0 0 3px white"
-                        }
-                    });
-                }
-            }
+        // Store trail center for mode detection
+        const bounds = trails.getBounds();
+        if (bounds.isValid()) {
+            window.trailCenter = bounds.getCenter();
+            map.fitBounds(bounds, { padding: [40, 40] });
         }
 
-    }).addTo(map);
-
-    let bounds = trails.getBounds();
-    window.trailCenter = bounds.getCenter();
-
-    map.fitBounds(bounds);
-
-    document.getElementById("modeBox").innerHTML = "Browse Mode from trails.js";
-
-    // 🔍 POI label visibility
-    function updatePOILabels() {
-        let zoom = map.getZoom();
-
-        trails.eachLayer(layer => {
-            if (layer.getTooltip()) {
-                if (zoom >= 16) {
-                    layer.openTooltip();
-                } else {
-                    layer.closeTooltip();
+        // ── POI LABEL VISIBILITY by zoom ───────────────────────────────────────
+        function updatePOILabels() {
+            const zoom = map.getZoom();
+            trails.eachLayer(layer => {
+                if (layer.getTooltip) {
+                    const tt = layer.getTooltip();
+                    if (tt) {
+                        if (zoom >= 15) {
+                            layer.openTooltip();
+                        } else {
+                            layer.closeTooltip();
+                        }
+                    }
                 }
-            }
-        });
-    }
+            });
+        }
 
-    updatePOILabels();
-    map.on("zoomend", updatePOILabels);
-
-})
-.catch(err => {
-    document.getElementById("modeBox").innerHTML = "Error loading trails";
-    console.log(err);
-});
+        updatePOILabels();
+        map.on("zoomend", updatePOILabels);
+    })
+    .catch(err => {
+        console.error("Error loading trails:", err);
+        document.getElementById("modeText").textContent = "Error loading trails";
+    });

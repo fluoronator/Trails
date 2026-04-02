@@ -1,90 +1,188 @@
-// ---------------------------
-// GPS + User Location Handling
-// ---------------------------
+// gps.js — GPS tracking, mode detection, and return-to-location logic
 
-// 🔧 EASY TESTING CONTROL
-// Set to 90000 to force Hiking Mode from far away
-// Set to 3200 for real behavior
+// ── CONFIG ────────────────────────────────────────────────────────────────────
+
+// Distance in meters from trail center to trigger Hiking Mode
+// Set large for testing so Hiking Mode triggers even from far away
 window.MODE_DISTANCE = 90000;
 
-let userMarker = null;
-let hasCentered = false;
+// How long (ms) of map inactivity before auto-recentering in Hiking Mode
+const RECENTER_DELAY_MS = 4000;
 
-// ---------------------------
-// Helper: safely update mode label
-// ---------------------------
-function setModeLabel(text) {
-  const modeBox = document.getElementById("modeBox");
-  if (modeBox) {
-    modeBox.innerHTML = text;
-  }
-}
+// ── STATE ─────────────────────────────────────────────────────────────────────
 
-// ---------------------------
-// Start Geolocation Tracking
-// ---------------------------
-if (navigator.geolocation) {
-  navigator.geolocation.watchPosition(
-    (position) => {
+let userMarker       = null;
+let userPulseMarker  = null;
+let userLatLng       = null;
+let hasCentered      = false;
+let isHikingMode     = false;
+let userMovedMap     = false;
+let recenterTimer    = null;
 
-      const lat = position.coords.latitude;
-      const lon = position.coords.longitude;
+// ── UI HELPERS ────────────────────────────────────────────────────────────────
 
-      const userLocation = L.latLng(lat, lon);
+function setMode(mode) {
+    const modeBox  = document.getElementById("modeBox");
+    const modeIcon = document.getElementById("modeIcon");
+    const modeText = document.getElementById("modeText");
+    const northArrow = document.getElementById("northArrow");
 
-      // Create or update user marker
-      if (!userMarker) {
-        userMarker = L.circleMarker(userLocation, {
-          radius: 8,
-          color: '#007AFF',
-          fillColor: '#007AFF',
-          fillOpacity: 1
-        }).addTo(map);
-      } else {
-        userMarker.setLatLng(userLocation);
-      }
+    isHikingMode = (mode === "hiking");
+    window.isHikingMode = isHikingMode;
 
-      // ---------------------------
-      // ✅ MODE LOGIC (SINGLE SOURCE)
-      // ---------------------------
-      if (window.trailCenter) {
-
-        let distance = userLocation.distanceTo(window.trailCenter);
-
-        if (distance <= window.MODE_DISTANCE) {
-          setModeLabel("Hiking Mode");
-        } else {
-          setModeLabel("Browse Mode");
-        }
-      }
-
-      // Initial centering (only once)
-      if (!hasCentered) {
-        map.setView(userLocation, 14);
-        hasCentered = true;
-
-        setModeLabel("Browse Mode centering from gps.js");
-      }
-
-    },
-    (err) => {
-      console.warn("GPS error:", err);
-    },
-    {
-      enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: 10000
+    if (isHikingMode) {
+        modeBox.className  = "hiking";
+        modeIcon.textContent = "🥾";
+        modeText.textContent = "Hiking Mode";
+        northArrow.classList.remove("hidden");
+    } else {
+        modeBox.className  = "browse";
+        modeIcon.textContent = "🗺";
+        modeText.textContent = "Browse Mode";
+        northArrow.classList.add("hidden");
+        // In browse mode, no rotation
+        setMapRotation(0);
     }
-  );
 }
 
-// ---------------------------
-// Detect manual map movement
-// ---------------------------
-window.userMovedMap = false;
+function showRecenterBtn(show) {
+    const btn = document.getElementById("recenterBtn");
+    if (show) {
+        btn.classList.remove("hidden");
+    } else {
+        btn.classList.add("hidden");
+    }
+}
 
-map.on('movestart', function (e) {
-  if (e.originalEvent) {
-    window.userMovedMap = true;
-  }
+// ── PUBLIC: called by recenter button ─────────────────────────────────────────
+function recenterToUser() {
+    if (!userLatLng) return;
+    map.setView(userLatLng, Math.max(map.getZoom(), 15));
+    userMovedMap = false;
+    showRecenterBtn(false);
+}
+
+// ── CREATE / UPDATE USER MARKER ───────────────────────────────────────────────
+
+function updateUserMarker(latlng) {
+    if (!userMarker) {
+        // Accuracy/pulse ring
+        const pulseIcon = L.divIcon({
+            html: '<div class="user-location-pulse"></div>',
+            className: '',
+            iconSize: [16, 16],
+            iconAnchor: [8, 8]
+        });
+        userPulseMarker = L.marker(latlng, { icon: pulseIcon, zIndexOffset: 900 }).addTo(map);
+
+        // Main dot
+        userMarker = L.circleMarker(latlng, {
+            radius:      8,
+            color:       '#ffffff',
+            weight:      2.5,
+            fillColor:   '#007AFF',
+            fillOpacity: 1,
+            zIndexOffset: 1000
+        }).addTo(map);
+    } else {
+        userMarker.setLatLng(latlng);
+        userPulseMarker.setLatLng(latlng);
+    }
+}
+
+// ── INACTIVITY RECENTER TIMER ─────────────────────────────────────────────────
+
+function resetRecenterTimer() {
+    clearTimeout(recenterTimer);
+    if (isHikingMode && userMovedMap) {
+        recenterTimer = setTimeout(() => {
+            if (userMovedMap && isHikingMode) {
+                recenterToUser();
+            }
+        }, RECENTER_DELAY_MS);
+    }
+}
+
+// ── GEOLOCATION TRACKING ──────────────────────────────────────────────────────
+
+if (navigator.geolocation) {
+    navigator.geolocation.watchPosition(
+        (position) => {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+            userLatLng = L.latLng(lat, lon);
+
+            updateUserMarker(userLatLng);
+
+            // ── MODE DETECTION ─────────────────────────────────────────────────
+            if (window.trailCenter) {
+                const dist = userLatLng.distanceTo(window.trailCenter);
+                const shouldHike = dist <= window.MODE_DISTANCE;
+                const wasHiking = isHikingMode;
+
+                setMode(shouldHike ? "hiking" : "browse");
+
+                // On entering hiking mode, snap to user location
+                if (shouldHike && !wasHiking && !hasCentered) {
+                    map.setView(userLatLng, 15);
+                    hasCentered = true;
+                }
+            } else {
+                // Trails not loaded yet — show locating
+                document.getElementById("modeText").textContent = "Locating…";
+            }
+
+            // ── AUTO-CENTER (first fix) ────────────────────────────────────────
+            if (!hasCentered) {
+                map.setView(userLatLng, 15);
+                hasCentered = true;
+            }
+
+            // ── AUTO-FOLLOW in hiking mode ─────────────────────────────────────
+            if (isHikingMode && !userMovedMap) {
+                map.panTo(userLatLng, { animate: true, duration: 0.5 });
+            }
+        },
+        (err) => {
+            console.warn("GPS error:", err.message);
+            if (!hasCentered) {
+                document.getElementById("modeText").textContent = "GPS unavailable";
+            }
+        },
+        {
+            enableHighAccuracy: true,
+            maximumAge:         0,
+            timeout:            15000
+        }
+    );
+} else {
+    document.getElementById("modeText").textContent = "GPS not supported";
+}
+
+// ── DETECT MANUAL MAP MOVEMENT ────────────────────────────────────────────────
+
+map.on('dragstart', function(e) {
+    userMovedMap = true;
+    if (isHikingMode) {
+        showRecenterBtn(true);
+    }
+    resetRecenterTimer();
+});
+
+map.on('drag', function() {
+    resetRecenterTimer();
+});
+
+map.on('dragend', function() {
+    resetRecenterTimer();
+});
+
+// On zoom, if user zoomed manually, also pause follow
+map.on('zoomstart', function(e) {
+    // Only treat as user move if it came from UI, not programmatic
+    if (e.originalEvent) {
+        userMovedMap = true;
+        if (isHikingMode) showRecenterBtn(true);
+        resetRecenterTimer();
+    }
 });
