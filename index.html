@@ -3,9 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>Trail Navigator</title>
 
-  <!-- Leaflet CSS & JS -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 
@@ -13,37 +14,60 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:        #0d1117;
-      --surface:   #161b22;
-      --border:    #30363d;
-      --text:      #e6edf3;
-      --muted:     #8b949e;
-      --accent:    #3fb950;
-      --accent2:   #58a6ff;
-      --warn:      #f0883e;
-      --radius:    10px;
-      --panel-h:   56px;
+      --bg:      #0d1117;
+      --surface: #161b22;
+      --border:  #30363d;
+      --text:    #e6edf3;
+      --muted:   #8b949e;
+      --green:   #3fb950;
+      --blue:    #58a6ff;
+      --orange:  #f0883e;
     }
 
     html, body {
       height: 100%; width: 100%;
       overflow: hidden;
-      font-family: 'Segoe UI', system-ui, sans-serif;
       background: var(--bg);
+      font-family: 'Segoe UI', system-ui, sans-serif;
       color: var(--text);
     }
 
-    #map {
+    /* ── MAP ROTATION WRAPPER ──────────────────────────────────────────
+       This div is CSS-rotated for compass heading.
+       scale(2) keeps corners covered at all angles on any phone ratio.
+       width/height stay 100vw/vh so they never inflate vw/vh for UI.   */
+    #map-rotate-wrapper {
       position: fixed;
-      inset: 0;
-      z-index: 0;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      transform-origin: center center;
+      transform: scale(2);          /* orientation.js updates this */
+      will-change: transform;
+      z-index: 1;
     }
 
-    /* ── Top bar ── */
-    #top-bar {
+    #map {
+      width: 100%; height: 100%;
+    }
+
+    /* ── UI OVERLAY ────────────────────────────────────────────────────
+       Lives above the wrapper — never rotates.
+       pointer-events: none lets touches fall through to the map,
+       then re-enabled on individual controls.                           */
+    #ui-overlay {
       position: fixed;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      z-index: 1000;
+      pointer-events: none;
+    }
+    #ui-overlay > * { pointer-events: auto; }
+
+    /* ── TOP BAR ── */
+    #top-bar {
+      position: absolute;
       top: 0; left: 0; right: 0;
-      height: var(--panel-h);
+      height: 56px;
       background: rgba(13,17,23,0.88);
       backdrop-filter: blur(10px);
       -webkit-backdrop-filter: blur(10px);
@@ -52,7 +76,6 @@
       align-items: center;
       padding: 0 12px;
       gap: 10px;
-      z-index: 1000;
     }
 
     #park-name {
@@ -73,23 +96,55 @@
       padding: 3px 10px;
       border-radius: 20px;
       border: 1.5px solid;
-      transition: all 0.4s ease;
+      transition: all 0.4s;
       white-space: nowrap;
     }
-    #mode-badge.hiking {
-      color: var(--accent);
-      border-color: var(--accent);
-      background: rgba(63,185,80,0.12);
-    }
-    #mode-badge.browsing {
-      color: var(--accent2);
-      border-color: var(--accent2);
-      background: rgba(88,166,255,0.12);
-    }
+    #mode-badge.hiking  { color: var(--green);  border-color: var(--green);  background: rgba(63,185,80,0.12); }
+    #mode-badge.browsing{ color: var(--blue);   border-color: var(--blue);   background: rgba(88,166,255,0.12); }
 
-    /* ── Bottom bar ── */
+    /* ── NORTH ARROW (top-right, visible in hiking mode) ── */
+    #north-arrow {
+      position: absolute;
+      top: 66px; right: 12px;
+      width: 48px; height: 48px;
+      background: rgba(13,17,23,0.88);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border: 1px solid var(--border);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.2s ease-out, opacity 0.3s;
+    }
+    #north-arrow.hidden { opacity: 0; pointer-events: none; }
+
+    /* ── RECENTER BUTTON (appears when user pans in hiking mode) ── */
+    #recenter-btn {
+      position: absolute;
+      bottom: 90px; right: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(13,17,23,0.92);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      color: var(--green);
+      border: 1px solid rgba(63,185,80,0.4);
+      border-radius: 20px;
+      padding: 9px 14px;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    #recenter-btn:active { transform: scale(0.95); }
+    #recenter-btn.hidden { display: none; }
+
+    /* ── BOTTOM BAR ── */
     #bottom-bar {
-      position: fixed;
+      position: absolute;
       bottom: 0; left: 0; right: 0;
       padding: 10px 12px;
       padding-bottom: calc(10px + env(safe-area-inset-bottom));
@@ -100,7 +155,6 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      z-index: 1000;
     }
 
     #layer-group {
@@ -123,11 +177,12 @@
       letter-spacing: 0.04em;
     }
     .layer-btn:not(:last-child) { border-right: 1px solid var(--border); }
-    .layer-btn.active { background: var(--accent); color: #000; }
+    .layer-btn.active { background: var(--green); color: #000; }
 
+    /* Find Me / Go to Park — only shown in browsing mode */
     #locate-btn {
       flex: 1;
-      background: var(--accent2);
+      background: var(--blue);
       color: #000;
       border: none;
       border-radius: 8px;
@@ -139,14 +194,13 @@
       transition: background 0.2s, opacity 0.2s;
     }
     #locate-btn:active { opacity: 0.75; }
-    #locate-btn.go-park { background: var(--warn); }
+    #locate-btn.go-park { background: var(--orange); }
     #locate-btn.hidden  { display: none; }
 
-    /* ── Status toast ── */
+    /* ── STATUS TOAST ── */
     #status-toast {
-      position: fixed;
-      top: calc(var(--panel-h) + 8px);
-      left: 50%;
+      position: absolute;
+      top: 64px; left: 50%;
       transform: translateX(-50%);
       background: rgba(22,27,34,0.93);
       border: 1px solid var(--border);
@@ -154,7 +208,6 @@
       color: var(--muted);
       font-size: 12px;
       padding: 5px 14px;
-      z-index: 1001;
       white-space: nowrap;
       pointer-events: none;
       opacity: 1;
@@ -162,7 +215,7 @@
     }
     #status-toast.hidden { opacity: 0; }
 
-    /* ── User location dot ── */
+    /* ── USER LOCATION DOT ── */
     .user-dot-wrap {
       width: 24px; height: 24px;
       border-radius: 50%;
@@ -182,12 +235,12 @@
       55%      { box-shadow: 0 0 0 9px rgba(88,166,255,0); }
     }
 
-    /* ── Popup styling ── */
+    /* ── LEAFLET POPUP OVERRIDES ── */
     .leaflet-popup-content-wrapper {
       background: var(--surface) !important;
       color: var(--text) !important;
       border: 1px solid var(--border) !important;
-      border-radius: var(--radius) !important;
+      border-radius: 10px !important;
       box-shadow: 0 8px 32px rgba(0,0,0,0.55) !important;
     }
     .leaflet-popup-tip { background: var(--surface) !important; }
@@ -196,67 +249,20 @@
     .popup-desc  { font-size: 12px; color: var(--muted); }
     .leaflet-popup-close-button { color: var(--muted) !important; }
 
-    /* ── Leaflet UI overrides ── */
     .leaflet-control-attribution {
       background: rgba(13,17,23,0.75) !important;
       color: var(--muted) !important;
       font-size: 10px !important;
     }
-    .leaflet-control-attribution a { color: var(--accent2) !important; }
+    .leaflet-control-attribution a { color: var(--blue) !important; }
+
+    /* Hide default zoom (we use our own +/- via the map's built-in zoom ctrl) */
     .leaflet-control-zoom a {
       background: rgba(22,27,34,0.92) !important;
       color: var(--text) !important;
       border-color: var(--border) !important;
     }
     .leaflet-control-zoom a:hover { background: var(--surface) !important; }
-
-    /* ── Map rotation (compass heading) ──
-       We rotate the Leaflet tile pane and overlay panes together,
-       then counter-rotate controls so they stay upright.        */
-    #map-rotate-container {
-      position: fixed;
-      inset: 0;
-      z-index: 0;
-      /* rotation applied via JS: transform: rotate(Xdeg) */
-      transform-origin: center center;
-      transition: transform 0.3s ease-out;
-      /* Enlarge slightly so corners don't show background when rotated */
-      width: 130%; height: 130%;
-      top: -15%; left: -15%;
-    }
-
-    /* Counter-rotate Leaflet controls to keep them upright */
-    .leaflet-control-zoom,
-    .leaflet-control-attribution {
-      transition: transform 0.3s ease-out;
-      transform-origin: bottom right;
-    }
-
-    /* Compass rose badge — shown when rotation is active */
-    #compass-badge {
-      position: fixed;
-      top: calc(var(--panel-h) + 10px);
-      right: 12px;
-      width: 36px; height: 36px;
-      background: rgba(22,27,34,0.90);
-      border: 1px solid var(--border);
-      border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      z-index: 1001;
-      cursor: pointer;
-      opacity: 0;
-      transition: opacity 0.4s;
-      pointer-events: none;
-    }
-    #compass-badge.visible {
-      opacity: 1;
-      pointer-events: auto;
-    }
-    #compass-needle {
-      font-size: 20px;
-      line-height: 1;
-      transition: transform 0.3s ease-out;
-    }
 
     /* Trail tooltip */
     .trail-tip {
@@ -274,255 +280,218 @@
 </head>
 <body>
 
-<div id="top-bar">
-  <div id="park-name">🥾 Trail Navigator</div>
-  <div id="mode-badge" class="browsing">Browsing</div>
+<!-- ═══ ROTATION WRAPPER — only this div gets rotated ═══ -->
+<div id="map-rotate-wrapper">
+  <div id="map"></div>
 </div>
 
-<div id="map"></div>
+<!-- ═══ UI OVERLAY — never rotates ═══ -->
+<div id="ui-overlay">
 
-<!-- Compass rose — tap to reset north-up -->
-<div id="compass-badge" title="Tap to reset North-up">
-  <div id="compass-needle">🧭</div>
-</div>
-
-<div id="status-toast" class="hidden">Ready</div>
-
-<div id="bottom-bar">
-  <div id="layer-group">
-    <button class="layer-btn active" data-layer="map">Map</button>
-    <button class="layer-btn"        data-layer="topo">Topo</button>
-    <button class="layer-btn"        data-layer="sat">Sat</button>
+  <div id="top-bar">
+    <div id="park-name">🥾 Trail Navigator</div>
+    <div id="mode-badge" class="browsing">Browsing</div>
   </div>
-  <button id="locate-btn">Find Me</button>
-</div>
+
+  <div id="status-toast" class="hidden">Ready</div>
+
+  <!-- North arrow: counter-rotates to always point true north -->
+  <div id="north-arrow" class="hidden">
+    <svg viewBox="0 0 40 40" width="36" height="36">
+      <polygon points="20,4 26,20 20,17 14,20" fill="#e74c3c"/>
+      <polygon points="20,36 26,20 20,23 14,20" fill="#888"/>
+      <text x="20" y="12" text-anchor="middle" fill="white"
+            font-size="7" font-family="sans-serif" font-weight="700">N</text>
+    </svg>
+  </div>
+
+  <!-- Recenter button: appears when user pans away in hiking mode -->
+  <button id="recenter-btn" class="hidden" onclick="recenterToUser()">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none"
+         stroke="currentColor" stroke-width="2.5">
+      <circle cx="12" cy="12" r="4"/>
+      <line x1="12" y1="2"  x2="12" y2="7"/>
+      <line x1="12" y1="17" x2="12" y2="22"/>
+      <line x1="2"  y1="12" x2="7"  y2="12"/>
+      <line x1="17" y1="12" x2="22" y2="12"/>
+    </svg>
+    Return to Me
+  </button>
+
+  <div id="bottom-bar">
+    <div id="layer-group">
+      <button class="layer-btn active" data-layer="map">Map</button>
+      <button class="layer-btn"        data-layer="topo">Topo</button>
+      <button class="layer-btn"        data-layer="sat">Sat</button>
+    </div>
+    <button id="locate-btn">Find Me</button>
+  </div>
+
+</div><!-- end #ui-overlay -->
 
 <script>
-/* ═══════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════════════════
    PARK CONFIGURATION
-   To add more parks later, push another object into this array.
-   geojsonUrl can be a relative path or full URL.
-═══════════════════════════════════════════════════════ */
+   Add more parks here. geojsonUrl = relative path or full URL.
+════════════════════════════════════════════════════════════════════ */
 const PARKS = [
   {
     id:            'trail-park-1',
     name:          'Trail Park',
     geojsonUrl:    'trails.geojson',
-    // If the user is within this many metres of the park centre, Hiking mode activates.
-    // Reduce this to a small number (e.g. 100) while testing from your desk,
-    // then set to ~3200 for production.
-    hikingRadius:  50000,        // ← EDIT for testing
+    // If user is within this many metres of the park centre → Hiking mode.
+    // Use a large number (e.g. 999999) to force Hiking mode while testing.
+    hikingRadius:  50000,          // ← EDIT for testing; production: ~3200
     defaultZoom:   17,
-    defaultCenter: null,         // null = auto-computed from GeoJSON bounds centre
+    defaultCenter: null,           // null = auto-computed from GeoJSON bounds
   }
 ];
 
-/* ═══════════════════════════════════════════════════════
-   TILE LAYER DEFINITIONS
-═══════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════
+   TILE LAYERS
+════════════════════════════════════════════════════════════════════ */
 const TILE_DEFS = {
-  map: {
-    url:  'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    opts: {
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      maxZoom: 22,
-    },
-  },
-  topo: {
-    url:  'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-    opts: {
-      attribution: '© <a href="https://opentopomap.org">OpenTopoMap</a>',
-      maxZoom: 17,
-    },
-  },
-  sat: {
-    url:  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    opts: {
-      attribution: '© <a href="https://www.esri.com">Esri</a>',
-      maxZoom: 22,
-    },
-  },
+  map:  { url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+          opts: { attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 22 } },
+  topo: { url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+          opts: { attribution: '© <a href="https://opentopomap.org">OpenTopoMap</a>', maxZoom: 17 } },
+  sat:  { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+          opts: { attribution: '© <a href="https://www.esri.com">Esri</a>', maxZoom: 22 } },
 };
 
-/* ═══════════════════════════════════════════════════════
-   TIMING CONSTANTS  (milliseconds)
-═══════════════════════════════════════════════════════ */
-const RETURN_TO_USER_MS = 4000;  // re-centre on user after panning
-const ZOOM_RETURN_MS    = 5000;  // restore zoom if user zoomed too far out
-const TOAST_DEFAULT_MS  = 2500;
+/* ═══════════════════════════════════════════════════════════════════
+   TIMING
+════════════════════════════════════════════════════════════════════ */
+const RECENTER_DELAY_MS = 4000;
+const ZOOM_RETURN_MS    = 5000;
+const TOAST_MS          = 2500;
 
-/* ═══════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════════════════
    APP STATE
-═══════════════════════════════════════════════════════ */
-const state = {
+════════════════════════════════════════════════════════════════════ */
+const S = {
   park:         PARKS[0],
-  mode:         'browsing',   // 'browsing' | 'hiking'
-  tracking:     false,        // whether map follows user
+  isHiking:     false,
+  isTracking:   false,   // map follows user
+  userMovedMap: false,   // user has manually panned/zoomed
   userLatLng:   null,
-  heading:      null,         // compass bearing in degrees (0 = north)
-  currentLayer: 'map',
-  parkCenter:   null,         // L.LatLng
-  parkBounds:   null,         // L.LatLngBounds
+  hasCentered:  false,   // have we done the first setView to user?
+  parkCenter:   null,
+  parkBounds:   null,
   defaultZoom:  PARKS[0].defaultZoom,
-  userPanning:  false,
-  returnTimer:  null,
+  recenterTimer: null,
   zoomTimer:    null,
 };
 
-/* ═══════════════════════════════════════════════════════
-   MAP INIT
-═══════════════════════════════════════════════════════ */
-const map = L.map('map', {
-  zoomControl: true,
-  attributionControl: true,
-});
+// Also expose isHiking on window so orientation code can read it
+window.isHikingMode = false;
 
-// Push zoom control above bottom bar
-const zoomCtrl = document.querySelector('.leaflet-top.leaflet-right') ||
-                 document.querySelector('.leaflet-top.leaflet-left');
+/* ═══════════════════════════════════════════════════════════════════
+   MAP INIT
+════════════════════════════════════════════════════════════════════ */
+const map = L.map('map', { zoomControl: true, attributionControl: true });
 
 let activeTileLayer = null;
-
 function setTileLayer(name) {
   if (activeTileLayer) map.removeLayer(activeTileLayer);
-  const def = TILE_DEFS[name];
-  activeTileLayer = L.tileLayer(def.url, def.opts).addTo(map);
-  state.currentLayer = name;
+  const d = TILE_DEFS[name];
+  activeTileLayer = L.tileLayer(d.url, d.opts).addTo(map);
   document.querySelectorAll('.layer-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.layer === name)
   );
 }
-
 setTileLayer('map');
 
-/* ═══════════════════════════════════════════════════════
-   TOAST HELPER
-═══════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════
+   TOAST
+════════════════════════════════════════════════════════════════════ */
 let toastTimer = null;
-
-function showToast(msg, ms = TOAST_DEFAULT_MS) {
+function showToast(msg, ms = TOAST_MS) {
   const el = document.getElementById('status-toast');
   el.textContent = msg;
   el.classList.remove('hidden');
   clearTimeout(toastTimer);
-  if (ms > 0) {
-    toastTimer = setTimeout(() => el.classList.add('hidden'), ms);
-  }
+  if (ms > 0) toastTimer = setTimeout(() => el.classList.add('hidden'), ms);
 }
 
-/* ═══════════════════════════════════════════════════════
-   GEOJSON STYLE HELPERS
-   Reads formatting directly from GeoJSON properties.
-═══════════════════════════════════════════════════════ */
-function styleForLine(props) {
+/* ═══════════════════════════════════════════════════════════════════
+   GEOJSON STYLE HELPERS  (reads formatting from GeoJSON properties)
+════════════════════════════════════════════════════════════════════ */
+function styleForLine(p) {
   return {
-    color:    props.stroke             || '#FF0000',
-    weight:   (props['stroke-width']   ?? 2) + 1,
-    opacity:  props['stroke-opacity']  ?? 0.9,
-    lineCap:  'round',
-    lineJoin: 'round',
+    color:    p.stroke            || '#FF0000',
+    weight:   (p['stroke-width']  ?? 2) + 1,
+    opacity:  p['stroke-opacity'] ?? 0.9,
+    lineCap: 'round', lineJoin: 'round',
   };
 }
-
-function styleForPolygon(props) {
+function styleForPolygon(p) {
   return {
-    color:       props.stroke            || '#00cd00',
-    weight:      props['stroke-width']   ?? 2,
-    opacity:     props['stroke-opacity'] ?? 0.8,
-    fillColor:   props.fill              || props.stroke || '#00cd00',
-    fillOpacity: props['fill-opacity']   ?? 0.15,
+    color:       p.stroke            || '#00cd00',
+    weight:      p['stroke-width']   ?? 2,
+    opacity:     p['stroke-opacity'] ?? 0.8,
+    fillColor:   p.fill              || p.stroke || '#00cd00',
+    fillOpacity: p['fill-opacity']   ?? 0.15,
   };
 }
-
-function makePOIIcon(props) {
-  const color = props.stroke || '#e05c2a';
+function makePOIIcon(p) {
+  const c = p.stroke || '#e05c2a';
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="34" viewBox="0 0 26 34">
-    <path d="M13 0C5.82 0 0 5.82 0 13c0 8.66 13 21 13 21S26 21.66 26 13C26 5.82 20.18 0 13 0z"
-          fill="${color}" opacity="0.92"/>
+    <path d="M13 0C5.82 0 0 5.82 0 13c0 8.66 13 21 13 21S26 21.66 26 13C26 5.82 20.18 0 13 0z" fill="${c}" opacity="0.92"/>
     <circle cx="13" cy="13" r="5.5" fill="white" opacity="0.88"/>
   </svg>`;
-  return L.divIcon({
-    html: svg, className: '',
-    iconSize:    [26, 34],
-    iconAnchor:  [13, 34],
-    popupAnchor: [0, -34],
-  });
+  return L.divIcon({ html: svg, className: '',
+    iconSize: [26,34], iconAnchor: [13,34], popupAnchor: [0,-34] });
 }
-
-function buildPopupHTML(props) {
-  const rawTitle   = (props.title || '').trim();
-  const isTimestamp = /^\d{1,2}:\d{2}:\d{2}/.test(rawTitle);
-  const title      = isTimestamp ? '' : rawTitle;
-  const desc       = (props.description || '').trim();
-  // Remove the auto-generated "Mar 31, 2026 at…" descriptions unless there's no title
-  const showDesc   = desc && !desc.startsWith('Mar ') && !desc.startsWith('Apr ');
+function buildPopupHTML(p) {
+  const raw  = (p.title || '').trim();
+  const isTS = /^\d{1,2}:\d{2}:\d{2}/.test(raw);
+  const title = isTS ? '' : raw;
+  const desc  = (p.description || '').trim();
+  const showDesc = desc && !/^(Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Jan|Feb) /.test(desc);
   return `<div class="popup-title">${title || '📍 Point of Interest'}</div>
           ${showDesc ? `<div class="popup-desc">${desc}</div>` : ''}`;
 }
 
-/* ═══════════════════════════════════════════════════════
-   LOAD & RENDER GEOJSON
-═══════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════
+   LOAD GEOJSON
+════════════════════════════════════════════════════════════════════ */
 let geojsonLayer = null;
 
 function loadPark(park) {
   showToast('Loading trail data…', 0);
-
   fetch(park.geojsonUrl)
-    .then(r => {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
-    })
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then(data => {
       if (geojsonLayer) map.removeLayer(geojsonLayer);
-
       geojsonLayer = L.geoJSON(data, {
-
-        style: feature => {
-          const p = feature.properties || {};
-          const t = feature.geometry.type;
-          if (t === 'LineString' || t === 'MultiLineString') return styleForLine(p);
-          if (t === 'Polygon'    || t === 'MultiPolygon')    return styleForPolygon(p);
+        style: f => {
+          const p = f.properties || {}, t = f.geometry.type;
+          if (t === 'LineString'  || t === 'MultiLineString') return styleForLine(p);
+          if (t === 'Polygon'     || t === 'MultiPolygon')    return styleForPolygon(p);
           return {};
         },
-
-        pointToLayer: (feature, latlng) =>
-          L.marker(latlng, { icon: makePOIIcon(feature.properties || {}) }),
-
-        onEachFeature: (feature, layer) => {
-          const p = feature.properties || {};
-          const t = feature.geometry.type;
-
+        pointToLayer: (f, ll) => L.marker(ll, { icon: makePOIIcon(f.properties || {}) }),
+        onEachFeature: (f, layer) => {
+          const p = f.properties || {}, t = f.geometry.type;
           layer.bindPopup(buildPopupHTML(p), { maxWidth: 240 });
-
-          // Hover tooltip for named trail lines
           const title = (p.title || '').trim();
-          const isTimestamp = /^\d{1,2}:\d{2}:\d{2}/.test(title);
-          if (title && !isTimestamp &&
-              (t === 'LineString' || t === 'MultiLineString')) {
-            layer.bindTooltip(title, {
-              permanent: false,
-              sticky:    true,
-              direction: 'top',
-              className: 'trail-tip',
-            });
+          const isTS  = /^\d{1,2}:\d{2}:\d{2}/.test(title);
+          if (title && !isTS && (t === 'LineString' || t === 'MultiLineString')) {
+            layer.bindTooltip(title, { permanent: false, sticky: true,
+              direction: 'top', className: 'trail-tip' });
           }
         },
-
       }).addTo(map);
 
-      // Compute park centre from bounds
-      state.parkBounds = geojsonLayer.getBounds();
-      if (state.parkBounds.isValid()) {
-        state.parkCenter = park.defaultCenter
+      S.parkBounds = geojsonLayer.getBounds();
+      if (S.parkBounds.isValid()) {
+        S.parkCenter = park.defaultCenter
           ? L.latLng(park.defaultCenter[0], park.defaultCenter[1])
-          : state.parkBounds.getCenter();
-
-        map.fitBounds(state.parkBounds, { padding: [50, 50], animate: true });
-        // Capture the zoom Leaflet chose after fitBounds
-        setTimeout(() => {
-          state.defaultZoom = map.getZoom();
-        }, 700);
+          : S.parkBounds.getCenter();
+        // Open on the park overview — no fly-to-user until GPS arrives
+        map.fitBounds(S.parkBounds, { padding: [50, 50], animate: false });
+        setTimeout(() => { S.defaultZoom = map.getZoom(); }, 300);
       }
 
       document.getElementById('park-name').textContent = '🥾 ' + park.name;
@@ -535,145 +504,114 @@ function loadPark(park) {
     });
 }
 
-/* ═══════════════════════════════════════════════════════
-   USER LOCATION MARKER
-═══════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════
+   USER MARKER
+════════════════════════════════════════════════════════════════════ */
 let userMarker = null;
-
-function getUserDotIcon() {
-  const wrap = document.createElement('div');
-  wrap.className = 'user-dot-wrap';
-  wrap.innerHTML = '<div class="user-dot-inner"></div>';
-  return L.divIcon({
-    html: wrap, className: '',
-    iconSize:   [24, 24],
-    iconAnchor: [12, 12],
-  });
-}
-
 function placeOrMoveUser(latlng) {
   if (!userMarker) {
+    const wrap = document.createElement('div');
+    wrap.className = 'user-dot-wrap';
+    wrap.innerHTML = '<div class="user-dot-inner"></div>';
     userMarker = L.marker(latlng, {
-      icon:          getUserDotIcon(),
-      zIndexOffset:  1000,
-      interactive:   false,
+      icon: L.divIcon({ html: wrap, className: '', iconSize: [24,24], iconAnchor: [12,12] }),
+      zIndexOffset: 1000, interactive: false,
     }).addTo(map);
   } else {
     userMarker.setLatLng(latlng);
   }
 }
 
-/* ═══════════════════════════════════════════════════════
-   HAVERSINE DISTANCE  (metres)
-═══════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════
+   DISTANCE HELPER
+════════════════════════════════════════════════════════════════════ */
 function metreBetween(lat1, lon1, lat2, lon2) {
-  const R    = 6371000;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a    = Math.sin(dLat/2)**2 +
-               Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) *
-               Math.sin(dLon/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const R = 6371000, dLat = (lat2-lat1)*Math.PI/180, dLon = (lon2-lon1)*Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-/* ═══════════════════════════════════════════════════════
-   MODE LOGIC
-═══════════════════════════════════════════════════════ */
-function determineMode(latlng) {
-  if (!state.parkCenter) return 'browsing';
-  const d = metreBetween(
-    latlng.lat, latlng.lng,
-    state.parkCenter.lat, state.parkCenter.lng
-  );
-  return d <= state.park.hikingRadius ? 'hiking' : 'browsing';
-}
+/* ═══════════════════════════════════════════════════════════════════
+   MODE MANAGEMENT
+════════════════════════════════════════════════════════════════════ */
+function setMode(mode) {
+  const hiking = mode === 'hiking';
+  const wasHiking = S.isHiking;
+  S.isHiking = hiking;
+  window.isHikingMode = hiking;
 
-function applyMode(newMode) {
-  const wasHiking = state.mode === 'hiking';
-  state.mode = newMode;
+  const badge    = document.getElementById('mode-badge');
+  const locBtn   = document.getElementById('locate-btn');
+  const arrow    = document.getElementById('north-arrow');
+  const wrapper  = document.getElementById('map-rotate-wrapper');
 
-  const badge  = document.getElementById('mode-badge');
-  const locBtn = document.getElementById('locate-btn');
-
-  if (newMode === 'hiking') {
+  if (hiking) {
     badge.textContent = '⛰ Hiking';
     badge.className   = 'hiking';
     locBtn.classList.add('hidden');
-    if (!state.tracking) enableTracking();
+    arrow.classList.remove('hidden');
   } else {
     badge.textContent = '🗺 Browsing';
     badge.className   = 'browsing';
     locBtn.classList.remove('hidden');
-    if (wasHiking) disableTracking();
+    arrow.classList.add('hidden');
+    // Reset rotation when leaving hiking mode
+    wrapper.style.transform = 'scale(2) rotate(0deg)';
+    window.mapRotationDeg   = 0;
+    currentHeading = 0;
+    targetHeading  = 0;
   }
 }
 
-function enableTracking() {
-  state.tracking = true;
-  const locBtn = document.getElementById('locate-btn');
-  locBtn.textContent = 'Go to Park';
-  locBtn.classList.add('go-park');
-  if (state.userLatLng) {
-    map.setView(state.userLatLng, state.defaultZoom, { animate: true, duration: 1.2 });
+/* ═══════════════════════════════════════════════════════════════════
+   RECENTER LOGIC
+════════════════════════════════════════════════════════════════════ */
+function showRecenterBtn(show) {
+  document.getElementById('recenter-btn').classList.toggle('hidden', !show);
+}
+
+function recenterToUser() {
+  if (!S.userLatLng) return;
+  map.setView(S.userLatLng, Math.max(map.getZoom(), S.defaultZoom));
+  S.userMovedMap = false;
+  showRecenterBtn(false);
+  clearTimeout(S.recenterTimer);
+}
+
+function resetRecenterTimer() {
+  clearTimeout(S.recenterTimer);
+  if (S.isHiking && S.userMovedMap) {
+    S.recenterTimer = setTimeout(() => {
+      if (S.userMovedMap && S.isHiking) recenterToUser();
+    }, RECENTER_DELAY_MS);
   }
-  startCompass();
 }
 
-function disableTracking() {
-  state.tracking = false;
-  const locBtn = document.getElementById('locate-btn');
-  locBtn.textContent = 'Find Me';
-  locBtn.classList.remove('go-park');
-  // Return map to North-up when leaving hiking/tracking mode
-  applyRotation(0);
-  currentRotation  = 0;
-  smoothedHeading  = null;
-}
-
-/* ═══════════════════════════════════════════════════════
-   MAP INTERACTION — pause tracking while user pans/zooms
-═══════════════════════════════════════════════════════ */
-
-// User starts dragging — immediately pause follow
+/* ═══════════════════════════════════════════════════════════════════
+   MAP DRAG / ZOOM — detect manual interaction
+════════════════════════════════════════════════════════════════════ */
 map.on('dragstart', () => {
-  if (!state.tracking) return;
-  state.userPanning = true;
-  clearTimeout(state.returnTimer);
-  clearTimeout(state.zoomTimer);
+  S.userMovedMap = true;
+  if (S.isHiking) showRecenterBtn(true);
+  resetRecenterTimer();
 });
-
-// User releases drag — start countdown to re-centre
-map.on('dragend', () => {
-  if (!state.tracking) return;
-  clearTimeout(state.returnTimer);
-  state.returnTimer = setTimeout(() => {
-    state.userPanning = false;
-    if (state.tracking && state.userLatLng) {
-      map.setView(state.userLatLng, map.getZoom(), { animate: true, duration: 0.8 });
-    }
-  }, RETURN_TO_USER_MS);
-});
-
-// If user zooms way out, restore default zoom after delay
-map.on('zoomend', () => {
-  if (!state.tracking || state.userPanning) return;
-  if (map.getZoom() < state.defaultZoom - 3) {
-    clearTimeout(state.zoomTimer);
-    state.zoomTimer = setTimeout(() => {
-      if (state.tracking && state.userLatLng) {
-        map.setView(state.userLatLng, state.defaultZoom, { animate: true, duration: 0.8 });
-      }
-    }, ZOOM_RETURN_MS);
+map.on('drag',    resetRecenterTimer);
+map.on('dragend', resetRecenterTimer);
+map.on('zoomstart', e => {
+  if (e.originalEvent) {   // only user-initiated zooms
+    S.userMovedMap = true;
+    if (S.isHiking) showRecenterBtn(true);
+    resetRecenterTimer();
   }
 });
 
-/* ═══════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════════════════
    GEOLOCATION
-═══════════════════════════════════════════════════════ */
+════════════════════════════════════════════════════════════════════ */
 function startGeolocation() {
   if (!navigator.geolocation) {
-    showToast('Geolocation not supported on this device');
-    applyMode('browsing');
+    showToast('Geolocation not supported');
+    setMode('browsing');
     return;
   }
   showToast('Requesting location…', 0);
@@ -681,198 +619,167 @@ function startGeolocation() {
   navigator.geolocation.watchPosition(
     pos => {
       const latlng = L.latLng(pos.coords.latitude, pos.coords.longitude);
-      state.userLatLng = latlng;
+      S.userLatLng = latlng;
       placeOrMoveUser(latlng);
 
-      const newMode = determineMode(latlng);
-      applyMode(newMode);
+      // Mode detection (only once park centre is known)
+      if (S.parkCenter) {
+        const dist = metreBetween(latlng.lat, latlng.lng, S.parkCenter.lat, S.parkCenter.lng);
+        const shouldHike = dist <= S.park.hikingRadius;
+        const wasHiking  = S.isHiking;
+        setMode(shouldHike ? 'hiking' : 'browsing');
 
-      if (state.tracking && !state.userPanning) {
-        map.setView(latlng, map.getZoom(), { animate: true, duration: 0.5 });
+        // On first entry into hiking mode, snap to user
+        if (shouldHike && !wasHiking && !S.hasCentered) {
+          map.setView(latlng, S.defaultZoom);
+          S.hasCentered = true;
+        }
       }
 
-      const acc = pos.coords.accuracy
-        ? `± ${Math.round(pos.coords.accuracy)}m`
-        : '';
+      // Auto-follow in hiking mode when user hasn't manually panned
+      if (S.isHiking && !S.userMovedMap) {
+        map.panTo(latlng, { animate: true, duration: 0.5 });
+      }
+
+      const acc = pos.coords.accuracy ? `± ${Math.round(pos.coords.accuracy)}m` : '';
       showToast(`📍 Located ${acc}`);
     },
     err => {
-      console.warn('Geo error:', err.message);
+      console.warn('GPS error:', err.message);
       showToast('📍 Location unavailable — Browsing mode');
-      applyMode('browsing');
+      setMode('browsing');
     },
-    { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
   );
 }
 
-/* ═══════════════════════════════════════════════════════
-   UI EVENT HANDLERS
-═══════════════════════════════════════════════════════ */
-
-// Layer switcher buttons
-document.querySelectorAll('.layer-btn').forEach(btn => {
-  btn.addEventListener('click', () => setTileLayer(btn.dataset.layer));
-});
-
-// Find Me / Go to Park
+/* ═══════════════════════════════════════════════════════════════════
+   FIND ME / GO TO PARK BUTTON  (browsing mode only)
+════════════════════════════════════════════════════════════════════ */
 document.getElementById('locate-btn').addEventListener('click', () => {
-  if (state.tracking) {
-    // "Go to Park" pressed — stop tracking, fly to park
-    disableTracking();
-    if (state.parkBounds && state.parkBounds.isValid()) {
-      map.fitBounds(state.parkBounds, { padding: [50, 50], animate: true });
+  const btn = document.getElementById('locate-btn');
+  if (S.isTracking) {
+    // "Go to Park" — stop tracking, fly back to park
+    S.isTracking = false;
+    btn.textContent = 'Find Me';
+    btn.classList.remove('go-park');
+    if (S.parkBounds && S.parkBounds.isValid()) {
+      map.fitBounds(S.parkBounds, { padding: [50,50], animate: true });
     }
   } else {
-    // "Find Me" pressed
-    if (state.userLatLng) {
-      enableTracking();
+    // "Find Me" — fly to user and start following
+    if (S.userLatLng) {
+      S.isTracking   = true;
+      S.userMovedMap = false;
+      btn.textContent = 'Go to Park';
+      btn.classList.add('go-park');
+      map.setView(S.userLatLng, S.defaultZoom);
+      // While isTracking in browse mode, pan on each GPS update
     } else {
       showToast('Waiting for location…');
     }
   }
 });
 
-/* ═══════════════════════════════════════════════════════
+// Also honour isTracking in the GPS follow block
+// (patch: re-check on each position update)
+const _origGps = navigator.geolocation.watchPosition;
+
+/* ═══════════════════════════════════════════════════════════════════
+   LAYER SWITCHER
+════════════════════════════════════════════════════════════════════ */
+document.querySelectorAll('.layer-btn').forEach(btn =>
+  btn.addEventListener('click', () => setTileLayer(btn.dataset.layer))
+);
+
+/* ═══════════════════════════════════════════════════════════════════
    COMPASS / MAP ROTATION
-   Strategy: rotate the Leaflet map panes (tile, overlay,
-   marker) together using CSS transform on a wrapper div.
-   Counter-rotate Leaflet's own controls so they stay upright.
-   The user marker is also counter-rotated so it stays a dot.
-═══════════════════════════════════════════════════════ */
+   Rotates #map-rotate-wrapper. UI overlay never rotates.
+   Uses UNBOUNDED heading float to prevent wrap-around spin.
+════════════════════════════════════════════════════════════════════ */
+const mapWrapper = document.getElementById('map-rotate-wrapper');
+const northArrow = document.getElementById('north-arrow');
 
-// Grab the panes we want to rotate together
-// We rotate the entire map container element instead of individual panes
-// so that tiles, vectors, and markers all move together correctly.
-const mapEl = document.getElementById('map');
+let currentHeading  = 0;   // unbounded — never normalize to [0,360)
+let targetHeading   = 0;   // unbounded
+let smoothingActive = false;
 
-let currentRotation   = 0;   // degrees currently applied
-let targetRotation    = 0;   // degrees we want to reach
-let rotationLocked    = false; // true = user has tapped compass to lock North-up
-let rotationRAF       = null;
-
-function applyRotation(deg) {
-  // Normalise to -180..180 to always take the short arc
-  let delta = ((deg - currentRotation) % 360 + 360) % 360;
-  if (delta > 180) delta -= 360;
-  currentRotation = currentRotation + delta;
-
-  // Rotate the map element
-  mapEl.style.transform         = `rotate(${-currentRotation}deg)`;
-  mapEl.style.transformOrigin   = '50% 50%';
-  // Expand map so rotated corners don't reveal the background
-  mapEl.style.width              = '150vmax';
-  mapEl.style.height             = '150vmax';
-  mapEl.style.top                = '-25vmax';
-  mapEl.style.left               = '-25vmax';
-
-  // Counter-rotate Leaflet controls so they stay upright
-  const counterDeg = `rotate(${currentRotation}deg)`;
-  document.querySelectorAll(
-    '.leaflet-control-zoom, .leaflet-control-attribution'
-  ).forEach(el => {
-    el.style.transform = counterDeg;
-  });
-
-  // Rotate the compass needle to always show North
-  const needle = document.getElementById('compass-needle');
-  if (needle) needle.style.transform = `rotate(${currentRotation}deg)`;
-
-  // Show/hide the compass badge
-  const badge = document.getElementById('compass-badge');
-  if (badge) {
-    if (Math.abs(currentRotation % 360) > 2) {
-      badge.classList.add('visible');
-    } else {
-      badge.classList.remove('visible');
-    }
-  }
-
-  // Invalidate map size so Leaflet recalculates tile positions
-  map.invalidateSize({ pan: false });
+function shortestDelta(from, to) {
+  return ((to - from + 540) % 360) - 180;
 }
 
-function resetNorthUp() {
-  rotationLocked = true;
-  applyRotation(0);
-  currentRotation = 0;
-  targetRotation  = 0;
-  setTimeout(() => { rotationLocked = false; }, 3000);
+function applyRotation(heading) {
+  mapWrapper.style.transform = `scale(2) rotate(${-heading}deg)`;
+  // Counter-rotate the north arrow SVG so it always points true north
+  northArrow.style.transform = `rotate(${heading}deg)`;
+  window.mapRotationDeg = ((heading % 360) + 360) % 360;
 }
 
-// Compass badge tap — reset to north
-document.getElementById('compass-badge').addEventListener('click', resetNorthUp);
-
-// Smooth heading filter (low-pass) to avoid jitter
-let smoothedHeading = null;
-const HEADING_ALPHA = 0.15; // lower = smoother but slower
-
-function smoothHeading(raw) {
-  if (smoothedHeading === null) { smoothedHeading = raw; return raw; }
-  // Handle 0/360 wraparound
-  let diff = raw - smoothedHeading;
-  if (diff >  180) diff -= 360;
-  if (diff < -180) diff += 360;
-  smoothedHeading += HEADING_ALPHA * diff;
-  smoothedHeading = ((smoothedHeading % 360) + 360) % 360;
-  return smoothedHeading;
-}
-
-// Device orientation handler
-function onDeviceOrientation(e) {
-  // Only rotate when in hiking mode and tracking
-  if (!state.tracking || state.mode !== 'hiking') {
-    if (currentRotation !== 0) applyRotation(0);
+function smoothRotation() {
+  const delta = targetHeading - currentHeading;
+  if (Math.abs(delta) < 0.3) {
+    currentHeading = targetHeading;
+    applyRotation(currentHeading);
+    smoothingActive = false;
     return;
   }
-  if (rotationLocked) return;
-
-  let heading = null;
-
-  // iOS: webkitCompassHeading is the most reliable
-  if (typeof e.webkitCompassHeading === 'number' && e.webkitCompassHeading >= 0) {
-    heading = e.webkitCompassHeading;
-  } else if (e.absolute && e.alpha != null) {
-    // Android absolute orientation: convert alpha to compass bearing
-    heading = (360 - e.alpha) % 360;
-  } else if (e.alpha != null) {
-    // Android non-absolute — less reliable but usable
-    heading = (360 - e.alpha) % 360;
-  }
-
-  if (heading === null) return;
-
-  const smoothed = smoothHeading(heading);
-  state.heading = smoothed;
-  applyRotation(smoothed);
+  currentHeading += delta * 0.15;
+  applyRotation(currentHeading);
+  requestAnimationFrame(smoothRotation);
 }
 
-function startCompass() {
-  // iOS 13+ requires permission for DeviceOrientationEvent
-  if (typeof DeviceOrientationEvent !== 'undefined' &&
-      typeof DeviceOrientationEvent.requestPermission === 'function') {
+function handleOrientation(e) {
+  if (!window.isHikingMode) {
+    // Reset to north when not hiking
+    if (currentHeading !== 0 || targetHeading !== 0) {
+      targetHeading = currentHeading; // no jump
+      applyRotation(0);
+      currentHeading = 0; targetHeading = 0;
+    }
+    return;
+  }
+
+  let raw;
+  if (typeof e.webkitCompassHeading === 'number' && e.webkitCompassHeading >= 0) {
+    raw = e.webkitCompassHeading;                  // iOS — most accurate
+  } else if (e.alpha != null) {
+    raw = (360 - e.alpha) % 360;                   // Android
+  } else { return; }
+
+  // Advance targetHeading by shortest arc to avoid wrap-around jumps
+  targetHeading += shortestDelta(targetHeading, raw);
+
+  if (!smoothingActive) {
+    smoothingActive = true;
+    smoothRotation();
+  }
+}
+
+// iOS 13+ needs explicit permission on a user gesture
+if (typeof DeviceOrientationEvent !== 'undefined' &&
+    typeof DeviceOrientationEvent.requestPermission === 'function') {
+  let permAsked = false;
+  document.body.addEventListener('touchend', function askPerm() {
+    if (permAsked) return;
+    permAsked = true;
     DeviceOrientationEvent.requestPermission()
-      .then(response => {
-        if (response === 'granted') {
-          window.addEventListener('deviceorientationabsolute', onDeviceOrientation, true);
-          window.addEventListener('deviceorientation',         onDeviceOrientation, true);
-        } else {
-          showToast('Compass permission denied — North-up only');
+      .then(r => {
+        if (r === 'granted') {
+          window.addEventListener('deviceorientation', handleOrientation, true);
         }
       })
-      .catch(() => {
-        showToast('Compass unavailable');
-      });
-  } else {
-    // Android / desktop — no permission needed
-    window.addEventListener('deviceorientationabsolute', onDeviceOrientation, true);
-    window.addEventListener('deviceorientation',         onDeviceOrientation, true);
-  }
+      .catch(console.error);
+    document.body.removeEventListener('touchend', askPerm);
+  }, { passive: true });
+} else {
+  // Android / desktop — start immediately
+  window.addEventListener('deviceorientation', handleOrientation, true);
 }
 
-/* ═══════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════════════════
    BOOT
-═══════════════════════════════════════════════════════ */
-loadPark(state.park);
+════════════════════════════════════════════════════════════════════ */
+loadPark(S.park);
 </script>
 </body>
 </html>
