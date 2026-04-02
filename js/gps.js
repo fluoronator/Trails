@@ -159,6 +159,94 @@ if (navigator.geolocation) {
     document.getElementById("modeText").textContent = "GPS not supported";
 }
 
+// ── ROTATION-AWARE PANNING ────────────────────────────────────────────────────
+//
+// Problem: when the map wrapper is CSS-rotated, Leaflet still thinks the map is
+// north-up. A finger drag that moves "up" on screen tells Leaflet to pan north —
+// but if the map is rotated 90° (facing East), "up on screen" is actually East,
+// so the map pans in the wrong direction.
+//
+// Fix: patch Leaflet's internal drag handler to rotate the pixel movement vector
+// by the current map heading before Leaflet interprets it.  We do this by
+// monkey-patching the Dragging handler's _move method right after the map loads.
+
+(function patchLeafletDrag() {
+    const dragging = map.dragging;
+
+    // Wait one tick so Leaflet has fully initialised its handlers
+    setTimeout(() => {
+        const handler = dragging._draggable;
+        if (!handler) return;
+
+        const originalOnMove = handler._onMove.bind(handler);
+
+        handler._onMove = function(e) {
+            const deg = window.mapRotationDeg || 0;
+
+            // Only correct when the map is actually rotated
+            if (deg === 0) {
+                return originalOnMove(e);
+            }
+
+            // Clone the event so we don't mutate the real one
+            const rad = (deg * Math.PI) / 180;
+            const cos = Math.cos(rad);
+            const sin = Math.sin(rad);
+
+            // Leaflet reads clientX/clientY from the event to compute the drag delta.
+            // We need to rotate those coordinates around the map's center point so
+            // that screen-space movement maps correctly to geographic movement.
+            const mapContainer = map.getContainer();
+            const rect = mapContainer.getBoundingClientRect();
+
+            // Use the visual center of the viewport (not the rotated container)
+            const cx = window.innerWidth  / 2;
+            const cy = window.innerHeight / 2;
+
+            // Extract the raw pointer position
+            const touches = e.touches || e.changedTouches;
+            const source  = touches ? touches[0] : e;
+            const px = source.clientX - cx;
+            const py = source.clientY - cy;
+
+            // Rotate the pointer position by -deg (inverse of map rotation)
+            const rx =  px * cos + py * sin;
+            const ry = -px * sin + py * cos;
+
+            // Build a synthetic event with the corrected coordinates
+            const fakeEvent = new Proxy(e, {
+                get(target, prop) {
+                    if (prop === 'clientX') return rx + cx;
+                    if (prop === 'clientY') return ry + cy;
+                    if (prop === 'touches' || prop === 'changedTouches') {
+                        // Wrap the touches array with corrected values
+                        const orig = target[prop];
+                        if (!orig) return orig;
+                        return new Proxy(orig, {
+                            get(tarr, tidx) {
+                                if (tidx === '0' || tidx === 0) {
+                                    return new Proxy(tarr[0], {
+                                        get(tt, tp) {
+                                            if (tp === 'clientX') return rx + cx;
+                                            if (tp === 'clientY') return ry + cy;
+                                            return tt[tp];
+                                        }
+                                    });
+                                }
+                                return tarr[tidx];
+                            }
+                        });
+                    }
+                    const val = target[prop];
+                    return typeof val === 'function' ? val.bind(target) : val;
+                }
+            });
+
+            return originalOnMove(fakeEvent);
+        };
+    }, 0);
+})();
+
 // ── DETECT MANUAL MAP MOVEMENT ────────────────────────────────────────────────
 
 map.on('dragstart', function(e) {
@@ -179,7 +267,6 @@ map.on('dragend', function() {
 
 // On zoom, if user zoomed manually, also pause follow
 map.on('zoomstart', function(e) {
-    // Only treat as user move if it came from UI, not programmatic
     if (e.originalEvent) {
         userMovedMap = true;
         if (isHikingMode) showRecenterBtn(true);

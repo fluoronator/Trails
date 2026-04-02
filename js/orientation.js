@@ -7,8 +7,12 @@
 //   All UI controls live in #ui-overlay which is NOT rotated, so they stay upright.
 //   The north arrow rotates counter to the map so it always points true north.
 
-let currentHeading  = 0;
-let targetHeading   = 0;
+// currentHeading is kept as an UNBOUNDED float (can go beyond 360 or below 0).
+// This prevents the north-crossing spin: instead of normalizing to [0,360) and
+// letting the interpolation pick the long way around, we always accumulate the
+// shortest-angle delta so the value smoothly crosses the 0/360 boundary.
+let currentHeading  = 0;   // unbounded — do NOT normalize to [0,360)
+let targetHeading   = 0;   // also unbounded, updated each sensor event
 let smoothingActive = false;
 
 const mapWrapper = document.getElementById("map-rotate-wrapper");
@@ -16,53 +20,55 @@ const northArrow  = document.getElementById("northArrow");
 
 // ── SMOOTH ROTATION ────────────────────────────────────────────────────────────
 
+// Returns the shortest signed delta to go from angle `from` to angle `to`,
+// both treated as compass degrees. Result is always in (-180, +180].
 function shortestAngleDelta(from, to) {
-    let delta = ((to - from + 540) % 360) - 180;
-    return delta;
+    return ((to - from + 540) % 360) - 180;
 }
 
 function applyRotation(heading) {
-    // Rotate wrapper so that the heading direction points "up" (away from user)
-    // A heading of 90° (East) should rotate the map -90° so East is up.
+    // Use the raw (unbounded) heading for the CSS transform — browsers handle it fine.
     mapWrapper.style.transform =
         `translate(-50%, -50%) rotate(${-heading}deg)`;
 
-    // Counter-rotate the north arrow so N always visually points north on screen
-    // The arrow SVG has N pointing up by default. We need to rotate it by +heading
-    // so it "undoes" the map rotation and keeps pointing at true north.
+    // North arrow counter-rotates to always visually point true north.
     northArrow.style.transform = `rotate(${heading}deg)`;
+
+    // Expose the current visual rotation so gps.js can correct drag vectors.
+    window.mapRotationDeg = ((heading % 360) + 360) % 360;
 }
 
 // ── HEADING HANDLER ────────────────────────────────────────────────────────────
 
 function handleOrientation(event) {
-    // Only rotate map in Hiking Mode
     if (!window.isHikingMode) {
-        // Restore north-up
         if (mapWrapper) {
             mapWrapper.style.transform = 'translate(-50%, -50%) rotate(0deg)';
         }
+        window.mapRotationDeg = 0;
         return;
     }
 
-    let heading;
+    let rawHeading;
 
-    // iOS (webkit) gives compassHeading directly — most reliable
+    // iOS: webkitCompassHeading is clockwise degrees from magnetic north — ideal.
     if (typeof event.webkitCompassHeading === 'number' &&
         event.webkitCompassHeading >= 0) {
-        heading = event.webkitCompassHeading;
+        rawHeading = event.webkitCompassHeading;
     }
-    // Android/standard: alpha is degrees from north, counterclockwise
-    // Convert to clockwise heading: heading = (360 - alpha) % 360
+    // Android/standard: alpha is CCW degrees from north. Convert to CW.
     else if (event.alpha !== null && event.alpha !== undefined) {
-        heading = (360 - event.alpha) % 360;
+        rawHeading = (360 - event.alpha) % 360;
     }
 
-    if (heading === undefined) return;
+    if (rawHeading === undefined) return;
 
-    targetHeading = heading;
+    // Instead of assigning rawHeading directly to targetHeading,
+    // advance targetHeading by the shortest delta from its current value.
+    // This keeps targetHeading unbounded and prevents wrap-around jumps.
+    const delta = shortestAngleDelta(targetHeading, rawHeading);
+    targetHeading += delta;
 
-    // Smooth interpolation to avoid jitter
     if (!smoothingActive) {
         smoothingActive = true;
         smoothRotation();
@@ -70,19 +76,19 @@ function handleOrientation(event) {
 }
 
 function smoothRotation() {
-    const delta = shortestAngleDelta(currentHeading, targetHeading);
+    // delta is always in (-180, +180] because both values are unbounded and
+    // currentHeading tracks targetHeading closely — no wrap-around possible.
+    const delta = targetHeading - currentHeading;
 
     if (Math.abs(delta) < 0.3) {
-        // Close enough — snap and stop
         currentHeading = targetHeading;
         applyRotation(currentHeading);
         smoothingActive = false;
         return;
     }
 
-    // Ease toward target (0.15 = smooth; increase for faster response)
+    // Ease toward target — 0.15 keeps motion smooth without lag
     currentHeading += delta * 0.15;
-    currentHeading  = ((currentHeading % 360) + 360) % 360;
 
     applyRotation(currentHeading);
     requestAnimationFrame(smoothRotation);
