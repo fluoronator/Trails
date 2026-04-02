@@ -288,16 +288,17 @@
       border: none !important;
       box-shadow: none !important;
       color: #000 !important;
-      font-size: 10px !important;
+      font-size: 8px !important;
       font-weight: 600 !important;
       line-height: 1.2 !important;
       padding: 0 !important;
-      max-width: 80px !important;
+      max-width: 60px !important;
       white-space: normal !important;
       word-wrap: break-word !important;
       text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff !important;
     }
     .poi-label::before { display: none !important; }
+    .poi-label-hidden  { display: none !important; }
 
     /* Trail tooltip */
     .trail-tip {
@@ -328,7 +329,7 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v14</div>
+  <div id="version-badge">v15</div>
 
   <div id="status-toast" class="hidden">Ready</div>
 
@@ -492,6 +493,22 @@ function buildPopupHTML(p) {
    LOAD GEOJSON
 ════════════════════════════════════════════════════════════════════ */
 let geojsonLayer = null;
+const poiLayers = [];   // all Point marker layers, for zoom-based label toggling
+
+// Labels visible at this zoom level and above
+const POI_LABEL_MIN_ZOOM = 17;
+
+function updatePoiLabelVisibility() {
+  const show = map.getZoom() >= POI_LABEL_MIN_ZOOM;
+  poiLayers.forEach(layer => {
+    const tt = layer.getTooltip();
+    if (!tt) return;
+    const el = tt.getElement();
+    if (el) el.classList.toggle('poi-label-hidden', !show);
+  });
+}
+
+map.on('zoomend', updatePoiLabelVisibility);
 
 function loadPark(park) {
   showToast('Loading trail data…', 0);
@@ -499,6 +516,7 @@ function loadPark(park) {
     .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then(data => {
       if (geojsonLayer) map.removeLayer(geojsonLayer);
+      poiLayers.length = 0;  // clear on reload
       geojsonLayer = L.geoJSON(data, {
         style: f => {
           const p = f.properties || {}, t = f.geometry.type;
@@ -506,7 +524,11 @@ function loadPark(park) {
           if (t === 'Polygon'     || t === 'MultiPolygon')    return styleForPolygon(p);
           return {};
         },
-        pointToLayer: (f, ll) => L.marker(ll, { icon: makePOIIcon(f.properties || {}) }),
+        pointToLayer: (f, ll) => {
+          const marker = L.marker(ll, { icon: makePOIIcon(f.properties || {}) });
+          poiLayers.push(marker);
+          return marker;
+        },
         onEachFeature: (f, layer) => {
           const p = f.properties || {}, t = f.geometry.type;
           const title = (p.title || '').trim();
@@ -551,6 +573,8 @@ function loadPark(park) {
       const parkName = data.name || park.name;
       document.getElementById('park-name').textContent = '🥾 ' + parkName;
       showToast('Trails loaded ✓');
+      // Check label visibility at initial zoom
+      setTimeout(updatePoiLabelVisibility, 800);
       startGeolocation();
     })
     .catch(err => {
