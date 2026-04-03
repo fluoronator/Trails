@@ -38,8 +38,8 @@
       position: fixed;
       top: 0; left: 0;
       width: 100vw; height: 100vh;
-      transform-origin: center center;
-      transform: scale(2);
+      transform-origin: 50% 75%;
+      transform: scale(2.5);
       will-change: transform;
       z-index: 1;
     }
@@ -369,7 +369,7 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v35-debug</div>
+  <div id="version-badge">v37-debug</div>
   <div id="zoom-badge"></div>
   <div id="debug-panel"></div>
 
@@ -799,7 +799,7 @@ function setMode(mode) {
     arrow.classList.add('hidden');
     showCompassBtn(false);
     clearTimeout(compassCheckTimer);
-    wrapper.style.transform = 'scale(2) rotate(0deg)';
+    wrapper.style.transform = 'scale(2.5) rotate(0deg)';
     window.mapRotationDeg   = 0;
     currentHeading = 0;
     targetHeading  = 0;
@@ -813,21 +813,18 @@ function setMode(mode) {
    using a plain panTo. No secondary panBy, no padding options.
 ════════════════════════════════════════════════════════════════════ */
 function panToUser(latlng, animate) {
-  // We want the user dot to appear 75% down the screen (25% from bottom).
-  // Strategy: find the latlng that, if placed at screen centre, would put
-  // our target latlng at 75% down. We do this by:
-  // 1. Find the pixel position of the target latlng on screen
-  // 2. Find the pixel position 25% above screen centre  
-  // 3. Pan to the latlng that would be at screen centre if target is at 75%
+  // Keep user dot at 75% down the screen, matching the rotation transform-origin.
+  // Find what latlng needs to be at screen centre so that our target
+  // latlng appears at 75% down.
   const container = map.getContainer();
-  const h = container.offsetHeight;
   const w = container.offsetWidth;
-  // The point we want to be at screen centre (shifted up by 25% of height)
-  const centrePoint = L.point(w / 2, h / 2 - h * 0.25);
-  // Convert: if latlng were at centrePoint, what latlng would be at true centre?
-  const targetPoint  = map.latLngToContainerPoint(latlng);
-  const delta        = targetPoint.subtract(centrePoint);
-  const newCentre    = map.containerPointToLatLng(L.point(w / 2 + delta.x, h / 2 + delta.y));
+  const h = container.offsetHeight;
+  // Pixel position of user on screen vs where we want them (75% down)
+  const targetPx  = map.latLngToContainerPoint(latlng);
+  const desiredPx = L.point(w * 0.5, h * 0.75);
+  const delta     = targetPx.subtract(desiredPx);
+  // The latlng that should be at screen centre to achieve this
+  const newCentre = map.containerPointToLatLng(L.point(w * 0.5 + delta.x, h * 0.5 + delta.y));
   map.panTo(newCentre, { animate: animate !== false, duration: 0.5 });
 }
 
@@ -1002,8 +999,8 @@ map.whenReady(function() {
   // Rotate a screen point around the map container centre by `deg` degrees
   function rotatePointAroundCenter(x, y, deg) {
     const container = map.getContainer();
-    const cx = container.offsetWidth  / 2;
-    const cy = container.offsetHeight / 2;
+    const cx = container.offsetWidth  * 0.5;
+    const cy = container.offsetHeight * 0.75;  // matches transform-origin: 50% 75%
     const rad = deg * Math.PI / 180;
     const cos = Math.cos(rad);
     const sin = Math.sin(rad);
@@ -1113,7 +1110,7 @@ function shortestDelta(from, to) {
 }
 
 function applyRotation(heading) {
-  mapWrapper.style.transform = `scale(2) rotate(${-heading}deg)`;
+  mapWrapper.style.transform = `scale(2.5) rotate(${-heading}deg)`;
   // The arrow lives in the un-rotated UI overlay. When the map rotates
   // -heading degrees, north on screen has shifted -heading degrees from
   // straight up, so the needle must rotate -heading to point back at north.
