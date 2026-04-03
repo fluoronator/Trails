@@ -206,7 +206,24 @@
       pointer-events: none;
     }
 
-    /* ── COMPASS PERMISSION BUTTON ── */
+    #debug-panel {
+      position: absolute;
+      top: 130px; left: 8px; right: 8px;
+      background: rgba(0,0,0,0.82);
+      color: #0f0;
+      font-family: monospace;
+      font-size: 11px;
+      line-height: 1.5;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid #0f0;
+      z-index: 2000;
+      pointer-events: none;
+      white-space: pre-wrap;
+      max-height: 220px;
+      overflow: hidden;
+    }
+
     #compass-btn-wrap {
       position: absolute;
       bottom: 80px;
@@ -352,7 +369,8 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v32</div>
+  <div id="version-badge">v33-debug</div>
+  <div id="debug-panel"></div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -489,7 +507,18 @@ function showToast(msg, ms = TOAST_MS) {
 }
 
 
-function styleForLine(p) {
+/* ═══════════════════════════════════════════════════════════════════
+   ON-SCREEN DEBUG
+════════════════════════════════════════════════════════════════════ */
+const _dbgLines = [];
+function dbg(msg) {
+  _dbgLines.push(msg);
+  if (_dbgLines.length > 10) _dbgLines.shift();
+  const el = document.getElementById('debug-panel');
+  if (el) el.textContent = _dbgLines.join('\n');
+}
+
+
   return {
     color:    p.stroke            || '#FF0000',
     weight:   (p['stroke-width']  ?? 2) + 1,
@@ -881,8 +910,14 @@ function startGeolocation() {
       // Also follow in browse mode when user has pressed Find Me (isTracking)
       const shouldFollow = (S.isHiking && !S.userMovedMap) ||
                            (!S.isHiking && S.isTracking);
+      dbg(`hiking:${S.isHiking} moved:${S.userMovedMap} tracking:${S.isTracking} metres:${movedMetres.toFixed(1)} follow:${shouldFollow}`);
       if (shouldFollow && movedMetres >= MIN_MOVE_METRES_FOLLOW) {
+        dbg(`→ PANNING to ${latlng.lat.toFixed(6)},${latlng.lng.toFixed(6)}`);
         panToUser(latlng, true);
+      } else if (shouldFollow) {
+        dbg(`→ skip pan (moved only ${movedMetres.toFixed(1)}m < ${MIN_MOVE_METRES_FOLLOW}m)`);
+      } else {
+        dbg(`→ not following`);
       }
 
       const acc = pos.coords.accuracy ? `± ${Math.round(pos.coords.accuracy)}m` : '';
