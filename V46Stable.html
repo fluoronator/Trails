@@ -216,6 +216,24 @@
       pointer-events: none;
     }
 
+    #debug-panel {
+      position: absolute;
+      top: 130px; left: 8px; right: 8px;
+      background: rgba(0,0,0,0.82);
+      color: #0f0;
+      font-family: monospace;
+      font-size: 11px;
+      line-height: 1.5;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid #0f0;
+      z-index: 2000;
+      pointer-events: none;
+      white-space: pre-wrap;
+      max-height: 220px;
+      overflow: hidden;
+    }
+
     #compass-btn-wrap {
       position: absolute;
       bottom: 80px;
@@ -361,7 +379,9 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v47</div>
+  <div id="version-badge">v46-debug</div>
+  <div id="zoom-badge"></div>
+  <div id="debug-panel"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
 
@@ -496,6 +516,17 @@ function showToast(msg, ms = TOAST_MS) {
   if (ms > 0) toastTimer = setTimeout(() => el.classList.add('hidden'), ms);
 }
 
+
+/* ═══════════════════════════════════════════════════════════════════
+   ON-SCREEN DEBUG
+════════════════════════════════════════════════════════════════════ */
+const _dbgLines = [];
+function dbg(msg) {
+  _dbgLines.push(msg);
+  if (_dbgLines.length > 10) _dbgLines.shift();
+  const el = document.getElementById('debug-panel');
+  if (el) el.textContent = _dbgLines.join('\n');
+}
 
 function styleForLine(p) {
   return {
@@ -853,34 +884,19 @@ function resetRecenterTimer() {
 /* ═══════════════════════════════════════════════════════════════════
    MAP DRAG / ZOOM — detect manual interaction
 ════════════════════════════════════════════════════════════════════ */
-
-// Track whether finger is currently on screen — block GPS pans during touch
-let isTouching = false;
-document.addEventListener('touchstart', () => { isTouching = true;  }, { passive: true });
-document.addEventListener('touchend',   () => { isTouching = false; }, { passive: true });
-document.addEventListener('touchcancel',() => { isTouching = false; }, { passive: true });
-
 map.on('dragstart', () => {
   S.userMovedMap = true;
   if (S.isHiking) showRecenterBtn(true);
-  clearTimeout(S.recenterTimer);  // cancel any pending snap-back while dragging
-});
-
-// Only start the return countdown when the finger lifts
-map.on('dragend', () => {
   resetRecenterTimer();
 });
-
+map.on('drag',    resetRecenterTimer);
+map.on('dragend', resetRecenterTimer);
 map.on('zoomstart', e => {
-  if (e.originalEvent) {
+  if (e.originalEvent) {   // only user-initiated zooms
     S.userMovedMap = true;
     if (S.isHiking) showRecenterBtn(true);
-    clearTimeout(S.recenterTimer);
+    resetRecenterTimer();
   }
-});
-
-map.on('zoomend', () => {
-  if (S.userMovedMap) resetRecenterTimer();
 });
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -935,8 +951,14 @@ function startGeolocation() {
       // Also follow in browse mode when user has pressed Find Me (isTracking)
       const shouldFollow = (S.isHiking && !S.userMovedMap) ||
                            (!S.isHiking && S.isTracking);
-      if (shouldFollow && movedMetres >= MIN_MOVE_METRES_FOLLOW && !isTouching) {
+      dbg(`hiking:${S.isHiking} moved:${S.userMovedMap} tracking:${S.isTracking} metres:${movedMetres.toFixed(1)} follow:${shouldFollow}`);
+      if (shouldFollow && movedMetres >= MIN_MOVE_METRES_FOLLOW) {
+        dbg(`→ PANNING to ${latlng.lat.toFixed(6)},${latlng.lng.toFixed(6)}`);
         panToUser(latlng, true);
+      } else if (shouldFollow) {
+        dbg(`→ skip pan (moved only ${movedMetres.toFixed(1)}m < ${MIN_MOVE_METRES_FOLLOW}m)`);
+      } else {
+        dbg(`→ not following`);
       }
 
       const acc = pos.coords.accuracy ? `± ${Math.round(pos.coords.accuracy)}m` : '';
