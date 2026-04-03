@@ -375,7 +375,7 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v51</div>
+  <div id="version-badge">v52</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -1117,44 +1117,52 @@ map.whenReady(function() {
 
 /* ═══════════════════════════════════════════════════════════════════
    FIX PINCH-ZOOM UNDER MAP ROTATION
-   When the map is rotated, Leaflet reads the pinch centre in raw screen
-   coordinates. We intercept touchmove on the map container and rotate
-   all touch points around the pivot before Leaflet sees them.
+   Leaflet's TouchZoom handler reads e.touches to find the pinch centre.
+   We patch its _onTouchStart and _onTouchMove methods to rotate the
+   touch coordinates before Leaflet uses them.
 ════════════════════════════════════════════════════════════════════ */
 map.whenReady(function() {
-  const container = map.getContainer();
+  const tz = map.touchZoom;
+  if (!tz) return;
 
-  function rotateTouchPoint(t) {
+  function rotateTouch(clientX, clientY) {
     const h = currentHeading;
-    if (!h) return t;
+    if (!h) return { clientX, clientY };
     const cx  = window.innerWidth  * 0.5;
     const cy  = window.innerHeight * 0.75;
     const rad = h * Math.PI / 180;
     const cos = Math.cos(rad);
     const sin = Math.sin(rad);
-    const dx  = t.clientX - cx;
-    const dy  = t.clientY - cy;
+    const dx  = clientX - cx;
+    const dy  = clientY - cy;
     return {
       clientX: cx + dx * cos - dy * sin,
       clientY: cy + dx * sin + dy * cos,
-      identifier: t.identifier,
-      target: t.target,
     };
   }
 
-  container.addEventListener('touchmove', function(e) {
-    const h = currentHeading;
-    if (!h || e.touches.length < 2) return;
-
-    // Rotate both touch points and rebuild the event's touches list
-    const rotated = Array.from(e.touches).map(rotateTouchPoint);
-
-    // Override the touches property Leaflet reads for pinch centre calculation
-    Object.defineProperty(e, 'touches', {
-      configurable: true,
-      get: () => rotated,
+  function makeTouchSynth(e) {
+    if (!currentHeading || e.touches.length < 2) return e;
+    const t0 = e.touches[0], t1 = e.touches[1];
+    const r0 = rotateTouch(t0.clientX, t0.clientY);
+    const r1 = rotateTouch(t1.clientX, t1.clientY);
+    const fakeTouches = [
+      { clientX: r0.clientX, clientY: r0.clientY, identifier: t0.identifier, target: t0.target },
+      { clientX: r1.clientX, clientY: r1.clientY, identifier: t1.identifier, target: t1.target },
+    ];
+    return new Proxy(e, {
+      get(target, prop) {
+        if (prop === 'touches') return fakeTouches;
+        const val = target[prop];
+        return typeof val === 'function' ? val.bind(target) : val;
+      }
     });
-  }, { passive: true, capture: true });
+  }
+
+  const origStart = tz._onTouchStart.bind(tz);
+  const origMove  = tz._onTouchMove.bind(tz);
+  tz._onTouchStart = e => origStart(makeTouchSynth(e));
+  tz._onTouchMove  = e => origMove(makeTouchSynth(e));
 });
    Rotates #map-rotate-wrapper. UI overlay never rotates.
    Uses UNBOUNDED heading float to prevent wrap-around spin.
