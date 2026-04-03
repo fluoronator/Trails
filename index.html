@@ -39,7 +39,7 @@
       top: 0; left: 0;
       width: 100vw; height: 100vh;
       transform-origin: 50% 75%;
-      transform: scale(2.5);
+      transform: scale(4);   /* JS overrides this with exact computed value */
       will-change: transform;
       z-index: 1;
     }
@@ -369,7 +369,7 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v37-debug</div>
+  <div id="version-badge">v39-debug</div>
   <div id="zoom-badge"></div>
   <div id="debug-panel"></div>
 
@@ -799,7 +799,7 @@ function setMode(mode) {
     arrow.classList.add('hidden');
     showCompassBtn(false);
     clearTimeout(compassCheckTimer);
-    wrapper.style.transform = 'scale(2.5) rotate(0deg)';
+    wrapper.style.transform = `scale(${computeRequiredScale()}) rotate(0deg)`;
     window.mapRotationDeg   = 0;
     currentHeading = 0;
     targetHeading  = 0;
@@ -1109,11 +1109,40 @@ function shortestDelta(from, to) {
   return ((to - from + 540) % 360) - 180;
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   DYNAMIC SCALE — computed from actual screen size so corners are
+   always covered regardless of device aspect ratio or pivot position.
+════════════════════════════════════════════════════════════════════ */
+function computeRequiredScale() {
+  const W = window.innerWidth;
+  const H = window.innerHeight;
+  // Pivot is at (50%, 75%) of screen
+  const px = W * 0.5;
+  const py = H * 0.75;
+  // Distance from pivot to each corner
+  const corners = [
+    [0, 0], [W, 0], [0, H], [W, H]
+  ];
+  const maxDist = Math.max(...corners.map(([cx, cy]) =>
+    Math.sqrt((cx - px) ** 2 + (cy - py) ** 2)
+  ));
+  // The wrapper is 100vw × 100vh, half-diagonal from its own centre
+  const halfDiag = Math.sqrt((W / 2) ** 2 + (H / 2) ** 2);
+  // Add 10% safety margin
+  return (maxDist / halfDiag) * 1.1;
+}
+
+function applyScale(extraTransform) {
+  const scale = computeRequiredScale();
+  const transform = extraTransform
+    ? `scale(${scale}) ${extraTransform}`
+    : `scale(${scale})`;
+  mapWrapper.style.transform = transform;
+}
+
 function applyRotation(heading) {
-  mapWrapper.style.transform = `scale(2.5) rotate(${-heading}deg)`;
-  // The arrow lives in the un-rotated UI overlay. When the map rotates
-  // -heading degrees, north on screen has shifted -heading degrees from
-  // straight up, so the needle must rotate -heading to point back at north.
+  const scale = computeRequiredScale();
+  mapWrapper.style.transform = `scale(${scale}) rotate(${-heading}deg)`;
   northArrow.style.transform = `rotate(${-heading}deg)`;
   window.mapRotationDeg = ((heading % 360) + 360) % 360;
 }
@@ -1271,6 +1300,19 @@ function checkCompassOnHikingStart() {
 /* ═══════════════════════════════════════════════════════════════════
    BOOT
 ════════════════════════════════════════════════════════════════════ */
+// Apply correct scale immediately for this device
+(function() {
+  const scale = computeRequiredScale();
+  document.getElementById('map-rotate-wrapper').style.transform = `scale(${scale})`;
+})();
+// Recompute if device rotates or resizes
+window.addEventListener('resize', () => {
+  if (!window.isHikingMode) {
+    const scale = computeRequiredScale();
+    document.getElementById('map-rotate-wrapper').style.transform = `scale(${scale}) rotate(0deg)`;
+  }
+});
+
 loadPark(S.park);
 </script>
 </body>
