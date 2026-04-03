@@ -39,7 +39,7 @@
       top: 0; left: 0;
       width: 100vw; height: 100vh;
       transform-origin: 50% 75%;
-      transform: scale(4);   /* JS overrides this with exact computed value */
+      transform: scale(4);
       will-change: transform;
       z-index: 1;
     }
@@ -369,7 +369,7 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v40-debug</div>
+  <div id="version-badge">v41-debug</div>
   <div id="zoom-badge"></div>
   <div id="debug-panel"></div>
 
@@ -799,7 +799,7 @@ function setMode(mode) {
     arrow.classList.add('hidden');
     showCompassBtn(false);
     clearTimeout(compassCheckTimer);
-    wrapper.style.transform = `scale(${computeRequiredScale()}) rotate(0deg)`;
+    wrapper.style.transform = 'scale(4) rotate(0deg)';
     window.mapRotationDeg   = 0;
     currentHeading = 0;
     targetHeading  = 0;
@@ -813,17 +813,12 @@ function setMode(mode) {
    using a plain panTo. No secondary panBy, no padding options.
 ════════════════════════════════════════════════════════════════════ */
 function panToUser(latlng, animate) {
-  // Keep user dot at 75% down the screen, matching the rotation transform-origin.
-  // Find what latlng needs to be at screen centre so that our target
-  // latlng appears at 75% down.
   const container = map.getContainer();
   const w = container.offsetWidth;
   const h = container.offsetHeight;
-  // Pixel position of user on screen vs where we want them (75% down)
   const targetPx  = map.latLngToContainerPoint(latlng);
   const desiredPx = L.point(w * 0.5, h * 0.75);
   const delta     = targetPx.subtract(desiredPx);
-  // The latlng that should be at screen centre to achieve this
   const newCentre = map.containerPointToLatLng(L.point(w * 0.5 + delta.x, h * 0.5 + delta.y));
   map.panTo(newCentre, { animate: animate !== false, duration: 0.5 });
 }
@@ -911,11 +906,11 @@ function startGeolocation() {
         const wasHiking  = S.isHiking;
         setMode(shouldHike ? 'hiking' : 'browsing');
 
+        // First time entering hiking mode — snap to user at hiking zoom
         if (shouldHike && !wasHiking && !S.hasCentered) {
           S.hasCentered = true;
-          map.setZoom(S.hikingZoom);
-          panToUser(latlng, false);
-          return;
+          map.setView(latlng, S.hikingZoom, { animate: true });
+          return;  // skip the regular follow this tick
         }
       }
 
@@ -965,8 +960,7 @@ document.getElementById('locate-btn').addEventListener('click', () => {
       S.userMovedMap = false;
       btn.textContent = 'Go to Park';
       btn.classList.add('go-park');
-      if (map.getZoom() < S.hikingZoom) map.setZoom(S.hikingZoom);
-      panToUser(S.userLatLng, true);
+      map.setView(S.userLatLng, Math.max(map.getZoom(), S.hikingZoom), { animate: true });
       // While isTracking in browse mode, pan on each GPS update
     } else {
       showToast('Waiting for location…');
@@ -1000,7 +994,7 @@ map.whenReady(function() {
   function rotatePointAroundCenter(x, y, deg) {
     const container = map.getContainer();
     const cx = container.offsetWidth  * 0.5;
-    const cy = container.offsetHeight * 0.75;  // matches transform-origin: 50% 75%
+    const cy = container.offsetHeight * 0.75;
     const rad = deg * Math.PI / 180;
     const cos = Math.cos(rad);
     const sin = Math.sin(rad);
@@ -1109,41 +1103,11 @@ function shortestDelta(from, to) {
   return ((to - from + 540) % 360) - 180;
 }
 
-/* ═══════════════════════════════════════════════════════════════════
-   DYNAMIC SCALE — computed from actual screen size so corners are
-   always covered regardless of device aspect ratio or pivot position.
-════════════════════════════════════════════════════════════════════ */
-function computeRequiredScale() {
-  const W = window.innerWidth;
-  const H = window.innerHeight;
-  // Pivot at (50%, 75%)
-  const px = W * 0.5;
-  const py = H * 0.75;
-  // Max distance from pivot to any screen corner
-  const maxDist = Math.max(
-    Math.sqrt(px * px + py * py),               // top-left
-    Math.sqrt((W - px) * (W - px) + py * py),   // top-right
-    Math.sqrt(px * px + (H - py) * (H - py)),   // bottom-left
-    Math.sqrt((W - px) * (W - px) + (H - py) * (H - py)) // bottom-right
-  );
-  // The wrapper is W×H. The shortest distance from pivot to wrapper edge
-  // is the minimum of distances to each edge — this is the limiting factor.
-  const minEdgeDist = Math.min(px, W - px, py, H - py);
-  // Scale needed so wrapper edge reaches all corners, plus 15% safety margin
-  return (maxDist / minEdgeDist) * 1.15;
-}
-
-function applyScale(extraTransform) {
-  const scale = computeRequiredScale();
-  const transform = extraTransform
-    ? `scale(${scale}) ${extraTransform}`
-    : `scale(${scale})`;
-  mapWrapper.style.transform = transform;
-}
-
 function applyRotation(heading) {
-  const scale = computeRequiredScale();
-  mapWrapper.style.transform = `scale(${scale}) rotate(${-heading}deg)`;
+  mapWrapper.style.transform = `scale(4) rotate(${-heading}deg)`;
+  // The arrow lives in the un-rotated UI overlay. When the map rotates
+  // -heading degrees, north on screen has shifted -heading degrees from
+  // straight up, so the needle must rotate -heading to point back at north.
   northArrow.style.transform = `rotate(${-heading}deg)`;
   window.mapRotationDeg = ((heading % 360) + 360) % 360;
 }
@@ -1301,19 +1265,6 @@ function checkCompassOnHikingStart() {
 /* ═══════════════════════════════════════════════════════════════════
    BOOT
 ════════════════════════════════════════════════════════════════════ */
-// Apply correct scale immediately for this device
-(function() {
-  const scale = computeRequiredScale();
-  document.getElementById('map-rotate-wrapper').style.transform = `scale(${scale})`;
-})();
-// Recompute if device rotates or resizes
-window.addEventListener('resize', () => {
-  if (!window.isHikingMode) {
-    const scale = computeRequiredScale();
-    document.getElementById('map-rotate-wrapper').style.transform = `scale(${scale}) rotate(0deg)`;
-  }
-});
-
 loadPark(S.park);
 </script>
 </body>
