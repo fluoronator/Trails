@@ -370,7 +370,7 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v58</div>
+  <div id="version-badge">v59</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -1227,11 +1227,33 @@ function startOrientationListening() {
   }
 }
 
-// iOS: show tap overlay on first load so we have a guaranteed user gesture
-// for the requestPermission call. Non-iOS: start immediately, no overlay needed.
+// iOS: check if permission is already granted before showing overlay
 if (typeof DeviceOrientationEvent !== 'undefined' &&
     typeof DeviceOrientationEvent.requestPermission === 'function') {
-  // iOS — show the tap overlay
+  // Try requesting silently — if already granted it resolves immediately
+  // without showing any system dialog
+  DeviceOrientationEvent.requestPermission()
+    .then(response => {
+      if (response === 'granted') {
+        // Already have permission — start listening immediately, no overlay
+        window.addEventListener('deviceorientation', handleOrientation, true);
+        orientationPermissionGranted = true;
+      } else {
+        // Not yet granted — show the tap overlay to get a user gesture
+        showTapOverlay();
+      }
+    })
+    .catch(() => {
+      // requestPermission called outside user gesture returns a rejection
+      // when permission hasn't been granted yet — show overlay
+      showTapOverlay();
+    });
+} else {
+  // Android / desktop — start immediately
+  startOrientationListening();
+}
+
+function showTapOverlay() {
   const overlay = document.getElementById('tap-overlay');
   overlay.classList.remove('hidden');
   overlay.addEventListener('click', function onTap() {
@@ -1239,20 +1261,15 @@ if (typeof DeviceOrientationEvent !== 'undefined' &&
     overlay.removeEventListener('click', onTap);
     startOrientationListening();
   }, { once: true });
-} else {
-  // Android / desktop — start immediately
-  startOrientationListening();
 }
 
 // Called from setMode() when hiking mode activates
 function checkCompassOnHikingStart() {
   smoothingActive = false;
-  // If iOS and permission not yet granted (user hasn't tapped overlay),
-  // show the overlay again as a reminder
   if (typeof DeviceOrientationEvent !== 'undefined' &&
       typeof DeviceOrientationEvent.requestPermission === 'function' &&
       !orientationPermissionGranted) {
-    document.getElementById('tap-overlay').classList.remove('hidden');
+    showTapOverlay();
   }
 }
 
