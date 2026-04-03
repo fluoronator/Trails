@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>Trail Navigator</title>
@@ -26,22 +26,20 @@
 
     html, body {
       height: 100%; width: 100%;
+      /* dvh = dynamic viewport height, accounts for browser chrome on mobile */
+      height: 100dvh;
       overflow: hidden;
       background: var(--bg);
       font-family: 'Segoe UI', system-ui, sans-serif;
       color: var(--text);
     }
 
-    /* ── MAP ROTATION WRAPPER ──────────────────────────────────────────
-       This div is CSS-rotated for compass heading.
-       scale(2) keeps corners covered at all angles on any phone ratio.
-       width/height stay 100vw/vh so they never inflate vw/vh for UI.   */
     #map-rotate-wrapper {
       position: fixed;
       top: 0; left: 0;
       width: 100vw; height: 100vh;
       transform-origin: center center;
-      transform: scale(2);          /* orientation.js updates this */
+      transform: scale(2);
       will-change: transform;
       z-index: 1;
     }
@@ -50,14 +48,12 @@
       width: 100%; height: 100%;
     }
 
-    /* ── UI OVERLAY ────────────────────────────────────────────────────
-       Lives above the wrapper — never rotates.
-       pointer-events: none lets touches fall through to the map,
-       then re-enabled on individual controls.                           */
     #ui-overlay {
       position: fixed;
       top: 0; left: 0;
       width: 100vw; height: 100vh;
+      /* Use dvh so overlay matches actual visible browser height */
+      height: 100dvh;
       z-index: 1000;
       pointer-events: none;
     }
@@ -146,8 +142,8 @@
     #bottom-bar {
       position: absolute;
       bottom: 0; left: 0; right: 0;
-      padding: 10px 12px;
-      padding-bottom: calc(10px + env(safe-area-inset-bottom));
+      padding: 8px 12px;
+      padding-bottom: max(8px, env(safe-area-inset-bottom));
       background: rgba(13,17,23,0.88);
       backdrop-filter: blur(10px);
       -webkit-backdrop-filter: blur(10px);
@@ -196,6 +192,31 @@
     #locate-btn:active { opacity: 0.75; }
     #locate-btn.go-park { background: var(--orange); }
     #locate-btn.hidden  { display: none; }
+
+    /* ── COMPASS PERMISSION BUTTON ── */
+    #compass-btn-wrap {
+      position: absolute;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1001;
+    }
+    #compass-btn-wrap.hidden { display: none; }
+    #compass-perm-btn {
+      background: rgba(13,17,23,0.92);
+      color: var(--green);
+      border: 1.5px solid var(--green);
+      border-radius: 20px;
+      padding: 10px 20px;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      white-space: nowrap;
+    }
+    #compass-perm-btn:active { opacity: 0.75; }
 
     /* ── VERSION BADGE ── */
     #version-badge {
@@ -318,7 +339,7 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v23</div>
+  <div id="version-badge">v25</div>
 
   <div id="status-toast" class="hidden">Ready</div>
 
@@ -345,6 +366,11 @@
     Return to Me
   </button>
 
+  <!-- Compass permission button — shown when orientation permission not yet granted -->
+  <div id="compass-btn-wrap" class="hidden">
+    <button id="compass-perm-btn">🧭 Enable Compass</button>
+  </div>
+
   <div id="bottom-bar">
     <div id="layer-group">
       <button class="layer-btn"        data-layer="map">Map</button>
@@ -368,7 +394,7 @@ const PARKS = [
     geojsonUrl:    'trails.geojson',
     // If user is within this many metres of the park centre → Hiking mode.
     // Use a large number (e.g. 999999) to force Hiking mode while testing.
-    hikingRadius:  90000,
+    hikingRadius:  3200,
     defaultZoom:   17,
     hikingZoom:    19,    // zoom level when following user on foot
     defaultCenter: null,           // null = auto-computed from GeoJSON bounds
@@ -709,11 +735,14 @@ function setMode(mode) {
     badge.className   = 'hiking';
     locBtn.classList.add('hidden');
     arrow.classList.remove('hidden');
+    checkCompassOnHikingStart();
   } else {
     badge.textContent = '🗺 Browsing';
     badge.className   = 'browsing';
     locBtn.classList.remove('hidden');
     arrow.classList.add('hidden');
+    showCompassBtn(false);
+    clearTimeout(compassCheckTimer);
     wrapper.style.transform = 'scale(2) rotate(0deg)';
     window.mapRotationDeg   = 0;
     currentHeading = 0;
@@ -1012,6 +1041,9 @@ function smoothRotation() {
 }
 
 function handleOrientation(e) {
+  orientationEventCount++;
+  // Hide the compass button once events are confirmed working
+  if (orientationEventCount === 1) showCompassBtn(false);
   if (!window.isHikingMode) {
     // Reset to north when not hiking
     if (currentHeading !== 0 || targetHeading !== 0) {
@@ -1038,40 +1070,80 @@ function handleOrientation(e) {
   }
 }
 
-// iOS 13+ needs explicit permission on a user gesture
-if (typeof DeviceOrientationEvent !== 'undefined' &&
-    typeof DeviceOrientationEvent.requestPermission === 'function') {
-  let permAsked = false;
-  document.body.addEventListener('touchend', function askPerm() {
-    if (permAsked) return;
-    permAsked = true;
+// iOS 13+ needs explicit permission on a user gesture.
+// Android needs no permission but we still detect if events are firing.
+
+let orientationPermissionGranted = false;
+let orientationEventCount = 0;
+let compassCheckTimer = null;
+
+function showCompassBtn(show) {
+  document.getElementById('compass-btn-wrap').classList.toggle('hidden', !show);
+}
+
+function startOrientationListening() {
+  window.addEventListener('deviceorientation', handleOrientation, true);
+  orientationPermissionGranted = true;
+  showCompassBtn(false);
+
+  // After 3 seconds check if we're actually receiving events
+  clearTimeout(compassCheckTimer);
+  compassCheckTimer = setTimeout(() => {
+    if (orientationEventCount === 0 && S.isHiking) {
+      showCompassBtn(true);
+    }
+  }, 3000);
+}
+
+function requestCompassPermission() {
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    // iOS 13+
     DeviceOrientationEvent.requestPermission()
-      .then(r => {
-        if (r === 'granted') {
-          // iOS: deviceorientation provides webkitCompassHeading — one listener only
-          window.addEventListener('deviceorientation', handleOrientation, true);
+      .then(response => {
+        if (response === 'granted') {
+          startOrientationListening();
+          showToast('Compass enabled ✓');
+        } else {
+          showToast('Compass permission denied');
+          showCompassBtn(true);
         }
       })
-      .catch(console.error);
-    document.body.removeEventListener('touchend', askPerm);
-  }, { passive: true });
-} else {
-  // Android / desktop: prefer 'deviceorientationabsolute' (true north).
-  // Fall back to 'deviceorientation' only if absolute is not supported.
-  // Register ONE listener only — never both — to prevent double-counting.
-  let usingAbsolute = false;
-  window.addEventListener('deviceorientationabsolute', function onAbsolute(e) {
-    if (e.absolute) {
-      usingAbsolute = true;
-      handleOrientation(e);
+      .catch(err => {
+        console.warn('Compass permission error:', err);
+        showToast('Compass unavailable');
+      });
+  } else {
+    // Android / desktop — no permission needed
+    startOrientationListening();
+  }
+}
+
+// Compass button tap
+document.getElementById('compass-perm-btn').addEventListener('click', requestCompassPermission);
+
+// Android/desktop: start immediately (no permission needed)
+// iOS: wait for button tap — requestPermission requires a direct user gesture
+if (typeof DeviceOrientationEvent === 'undefined' ||
+    typeof DeviceOrientationEvent.requestPermission !== 'function') {
+  startOrientationListening();
+}
+
+// Called from setMode() when hiking mode activates
+function checkCompassOnHikingStart() {
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    if (!orientationPermissionGranted) {
+      showCompassBtn(true);
     }
-  }, true);
-  // Only register the fallback if the absolute event doesn't fire within 1 s
-  setTimeout(() => {
-    if (!usingAbsolute) {
-      window.addEventListener('deviceorientation', handleOrientation, true);
+  }
+  // Also check after 3s if events are actually arriving
+  clearTimeout(compassCheckTimer);
+  compassCheckTimer = setTimeout(() => {
+    if (orientationEventCount === 0 && S.isHiking) {
+      showCompassBtn(true);
     }
-  }, 1000);
+  }, 3000);
 }
 
 /* ═══════════════════════════════════════════════════════════════════
