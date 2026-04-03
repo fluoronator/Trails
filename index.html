@@ -352,7 +352,7 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v30</div>
+  <div id="version-badge">v31</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -742,9 +742,9 @@ function metreBetween(lat1, lon1, lat2, lon2) {
    MODE MANAGEMENT
 ════════════════════════════════════════════════════════════════════ */
 function setMode(mode) {
-  const hiking = mode === 'hiking';
+  const hiking    = mode === 'hiking';
   const wasHiking = S.isHiking;
-  S.isHiking = hiking;
+  S.isHiking      = hiking;
   window.isHikingMode = hiking;
 
   const badge   = document.getElementById('mode-badge');
@@ -757,9 +757,12 @@ function setMode(mode) {
     badge.className   = 'hiking';
     locBtn.classList.add('hidden');
     arrow.classList.remove('hidden');
-    S.userMovedMap = false;   // ensure GPS follow is active when mode starts
-    showRecenterBtn(false);
-    checkCompassOnHikingStart();
+    // Only reset follow state on the transition into hiking mode
+    if (!wasHiking) {
+      S.userMovedMap = false;
+      showRecenterBtn(false);
+      checkCompassOnHikingStart();
+    }
   } else {
     badge.textContent = '🗺 Browsing';
     badge.className   = 'browsing';
@@ -775,23 +778,18 @@ function setMode(mode) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   OFFSET PAN — keeps user dot at 3/4 down the screen in hiking mode
-   so the hiker sees more trail ahead than behind.
-   Uses Leaflet's built-in padding option — single atomic operation,
-   no secondary panBy that fights with the drag rotation patch.
+   OFFSET PAN — keeps user dot at 3/4 down the screen in hiking mode.
+   Works by converting the target latlng to a pixel point, shifting it
+   up by 25% of screen height, then converting back to latlng and
+   using a plain panTo. No secondary panBy, no padding options.
 ════════════════════════════════════════════════════════════════════ */
-function panToUserWithOffset(latlng) {
-  const h = map.getContainer().offsetHeight;
-  // Target: user dot at 75% down = shift view so latlng appears 75% down.
-  // paddingTopLeft pushes the effective centre up by offsetY pixels.
-  // paddingBottomRight balances horizontally.
-  const offsetY = Math.round(h * 0.25);  // 25% up from centre = 75% down screen
-  map.panTo(latlng, {
-    animate:          true,
-    duration:         0.5,
-    paddingTopLeft:   [0, 0],
-    paddingBottomRight: [0, offsetY * 2],
-  });
+function panToUserWithOffset(latlng, animate) {
+  const offsetY  = map.getContainer().offsetHeight * 0.25;
+  const zoom     = map.getZoom();
+  // Convert latlng → pixel at current zoom, shift up, convert back
+  const pt       = map.project(latlng, zoom);
+  const shifted  = map.unproject(pt.subtract([0, offsetY]), zoom);
+  map.panTo(shifted, { animate: animate !== false, duration: 0.5 });
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -857,36 +855,38 @@ function startGeolocation() {
     pos => {
       const latlng = L.latLng(pos.coords.latitude, pos.coords.longitude);
 
-      // --- Jitter filter ---
-      const prevLatLng = S.userLatLng;
-      const movedMetres = prevLatLng ? metreBetween(
-        prevLatLng.lat, prevLatLng.lng, latlng.lat, latlng.lng
-      ) : Infinity;
+      // Jitter filter
+      const prevLatLng    = S.userLatLng;
+      const movedMetres   = prevLatLng
+        ? metreBetween(prevLatLng.lat, prevLatLng.lng, latlng.lat, latlng.lng)
+        : Infinity;
 
-      // Always store latest position for recenter button accuracy
       S.userLatLng = latlng;
 
-      // Only move the dot if position changed meaningfully
+      // Move the dot if position changed meaningfully
       if (movedMetres >= MIN_MOVE_METRES_DOT) {
         placeOrMoveUser(latlng);
       }
 
       // Mode detection (only once park centre is known)
       if (S.parkCenter) {
-        const dist = metreBetween(latlng.lat, latlng.lng, S.parkCenter.lat, S.parkCenter.lng);
+        const dist      = metreBetween(latlng.lat, latlng.lng, S.parkCenter.lat, S.parkCenter.lng);
         const shouldHike = dist <= S.park.hikingRadius;
         const wasHiking  = S.isHiking;
         setMode(shouldHike ? 'hiking' : 'browsing');
+
+        // First time entering hiking mode — snap to user at hiking zoom
         if (shouldHike && !wasHiking && !S.hasCentered) {
-          map.setZoom(S.hikingZoom);
-          panToUserWithOffset(latlng);
           S.hasCentered = true;
+          map.setZoom(S.hikingZoom);
+          panToUserWithOffset(latlng, false);
+          return;  // skip the regular follow this tick
         }
       }
 
-      // Only pan the map if moved enough to matter — eliminates GPS jitter vibration
+      // Regular GPS follow — pan map every update when hiking and not manually panned
       if (S.isHiking && !S.userMovedMap && movedMetres >= MIN_MOVE_METRES_FOLLOW) {
-        panToUserWithOffset(latlng);
+        panToUserWithOffset(latlng, true);
       }
 
       const acc = pos.coords.accuracy ? `± ${Math.round(pos.coords.accuracy)}m` : '';
