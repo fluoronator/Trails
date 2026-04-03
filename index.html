@@ -370,8 +370,8 @@
   </div>
 
   <div id="version-badge">v33-debug</div>
-  <div id="debug-panel"></div>
   <div id="zoom-badge"></div>
+  <div id="debug-panel"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
 
@@ -518,7 +518,7 @@ function dbg(msg) {
   if (el) el.textContent = _dbgLines.join('\n');
 }
 
-
+function styleForLine(p) {
   return {
     color:    p.stroke            || '#FF0000',
     weight:   (p['stroke-width']  ?? 2) + 1,
