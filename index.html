@@ -352,7 +352,7 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v28</div>
+  <div id="version-badge">v29</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -470,6 +470,11 @@ function setTileLayer(name) {
   );
 }
 setTileLayer('sat');
+
+function updateZoomBadge() {
+  const el = document.getElementById('zoom-badge');
+  if (el) el.textContent = 'zoom: ' + map.getZoom();
+}
 
 /* ═══════════════════════════════════════════════════════════════════
    TOAST
