@@ -375,7 +375,7 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v56</div>
+  <div id="version-badge">v57</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -1325,6 +1325,47 @@ map.whenReady(function() {
       }
     });
   }
+
+  // Track whether a pinch zoom is in progress
+  let pinching = false;
+
+  // Intercept map.setView during pinch — rotate the centre point back to
+  // geographic space since Leaflet computed it in raw (unrotated) screen space
+  const origSetView = map.setView.bind(map);
+  map.setView = function(center, zoom, options) {
+    if (pinching && currentHeading && center) {
+      // center is a latlng — convert to container pixels, rotate, convert back
+      const vmax = Math.max(window.innerWidth, window.innerHeight);
+      const cw = 4 * vmax, ch = 4 * vmax;
+      const originX = window.innerWidth  * 0.5 - cw * 0.5;
+      const originY = window.innerHeight * 0.75 - ch * 0.5;
+
+      const pt = map.latLngToContainerPoint(L.latLng(center));
+      const sx = pt.x + originX;
+      const sy = pt.y + originY;
+
+      const cx  = window.innerWidth  * 0.5;
+      const cy  = window.innerHeight * 0.75;
+      const rad = -currentHeading * Math.PI / 180; // inverse rotation
+      const cos = Math.cos(rad), sin = Math.sin(rad);
+      const dx = sx - cx, dy = sy - cy;
+      const rx = cx + dx * cos - dy * sin;
+      const ry = cy + dx * sin + dy * cos;
+
+      const rotated = map.containerPointToLatLng(
+        L.point(rx - originX, ry - originY)
+      );
+      return origSetView(rotated, zoom, options);
+    }
+    return origSetView(center, zoom, options);
+  };
+
+  map.getContainer().addEventListener('touchstart', e => {
+    if (e.touches.length === 2) pinching = true;
+  }, { passive: true });
+  map.getContainer().addEventListener('touchend', () => {
+    pinching = false;
+  }, { passive: true });
 
   const origStart = tz._onTouchStart.bind(tz);
   const origMove  = tz._onTouchMove.bind(tz);
