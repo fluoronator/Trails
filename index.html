@@ -369,7 +369,7 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v39-debug</div>
+  <div id="version-badge">v40-debug</div>
   <div id="zoom-badge"></div>
   <div id="debug-panel"></div>
 
@@ -1116,20 +1116,21 @@ function shortestDelta(from, to) {
 function computeRequiredScale() {
   const W = window.innerWidth;
   const H = window.innerHeight;
-  // Pivot is at (50%, 75%) of screen
+  // Pivot at (50%, 75%)
   const px = W * 0.5;
   const py = H * 0.75;
-  // Distance from pivot to each corner
-  const corners = [
-    [0, 0], [W, 0], [0, H], [W, H]
-  ];
-  const maxDist = Math.max(...corners.map(([cx, cy]) =>
-    Math.sqrt((cx - px) ** 2 + (cy - py) ** 2)
-  ));
-  // The wrapper is 100vw × 100vh, half-diagonal from its own centre
-  const halfDiag = Math.sqrt((W / 2) ** 2 + (H / 2) ** 2);
-  // Add 10% safety margin
-  return (maxDist / halfDiag) * 1.1;
+  // Max distance from pivot to any screen corner
+  const maxDist = Math.max(
+    Math.sqrt(px * px + py * py),               // top-left
+    Math.sqrt((W - px) * (W - px) + py * py),   // top-right
+    Math.sqrt(px * px + (H - py) * (H - py)),   // bottom-left
+    Math.sqrt((W - px) * (W - px) + (H - py) * (H - py)) // bottom-right
+  );
+  // The wrapper is W×H. The shortest distance from pivot to wrapper edge
+  // is the minimum of distances to each edge — this is the limiting factor.
+  const minEdgeDist = Math.min(px, W - px, py, H - py);
+  // Scale needed so wrapper edge reaches all corners, plus 15% safety margin
+  return (maxDist / minEdgeDist) * 1.15;
 }
 
 function applyScale(extraTransform) {
