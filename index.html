@@ -339,7 +339,7 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v25</div>
+  <div id="version-badge">v27</div>
 
   <div id="status-toast" class="hidden">Ready</div>
 
@@ -394,7 +394,7 @@ const PARKS = [
     geojsonUrl:    'trails.geojson',
     // If user is within this many metres of the park centre → Hiking mode.
     // Use a large number (e.g. 999999) to force Hiking mode while testing.
-    hikingRadius:  3200,
+    hikingRadius:  90000,
     defaultZoom:   17,
     hikingZoom:    19,    // zoom level when following user on foot
     defaultCenter: null,           // null = auto-computed from GeoJSON bounds
@@ -1042,12 +1042,11 @@ function smoothRotation() {
 
 function handleOrientation(e) {
   orientationEventCount++;
-  // Hide the compass button once events are confirmed working
   if (orientationEventCount === 1) showCompassBtn(false);
+
   if (!window.isHikingMode) {
-    // Reset to north when not hiking
     if (currentHeading !== 0 || targetHeading !== 0) {
-      targetHeading = currentHeading; // no jump
+      targetHeading = currentHeading;
       applyRotation(0);
       currentHeading = 0; targetHeading = 0;
     }
@@ -1056,12 +1055,18 @@ function handleOrientation(e) {
 
   let raw;
   if (typeof e.webkitCompassHeading === 'number' && e.webkitCompassHeading >= 0) {
-    raw = e.webkitCompassHeading;                  // iOS — most accurate
+    // iOS: webkitCompassHeading is clockwise degrees from true north — use directly
+    raw = e.webkitCompassHeading;
+  } else if (e.absolute && e.alpha != null) {
+    // Android deviceorientationabsolute: alpha is CCW from true north, convert to CW
+    raw = (360 - e.alpha) % 360;
   } else if (e.alpha != null) {
-    raw = (360 - e.alpha) % 360;                   // Android
-  } else { return; }
+    // Android fallback deviceorientation: alpha is CCW from arbitrary reference
+    raw = (360 - e.alpha) % 360;
+  } else {
+    return;
+  }
 
-  // Advance targetHeading by shortest arc to avoid wrap-around jumps
   targetHeading += shortestDelta(targetHeading, raw);
 
   if (!smoothingActive) {
@@ -1082,7 +1087,28 @@ function showCompassBtn(show) {
 }
 
 function startOrientationListening() {
-  window.addEventListener('deviceorientation', handleOrientation, true);
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    // iOS — uses deviceorientation which provides webkitCompassHeading (true north)
+    window.addEventListener('deviceorientation', handleOrientation, true);
+  } else {
+    // Android — prefer deviceorientationabsolute (true north referenced).
+    // Fall back to deviceorientation only if absolute never fires.
+    let gotAbsolute = false;
+
+    window.addEventListener('deviceorientationabsolute', function(e) {
+      gotAbsolute = true;
+      handleOrientation(e);
+    }, true);
+
+    setTimeout(() => {
+      if (!gotAbsolute) {
+        // Device doesn't support absolute — fall back, north may be approximate
+        window.addEventListener('deviceorientation', handleOrientation, true);
+      }
+    }, 500);  // 500ms is enough — absolute fires immediately if supported
+  }
+
   orientationPermissionGranted = true;
   showCompassBtn(false);
 
@@ -1131,13 +1157,18 @@ if (typeof DeviceOrientationEvent === 'undefined' ||
 
 // Called from setMode() when hiking mode activates
 function checkCompassOnHikingStart() {
+  // Reset smoothing so the RAF loop restarts cleanly on next orientation event
+  smoothingActive = false;
+
   if (typeof DeviceOrientationEvent !== 'undefined' &&
       typeof DeviceOrientationEvent.requestPermission === 'function') {
+    // iOS — show button if permission not yet granted
     if (!orientationPermissionGranted) {
       showCompassBtn(true);
     }
   }
-  // Also check after 3s if events are actually arriving
+
+  // Check after 3s whether events are actually arriving
   clearTimeout(compassCheckTimer);
   compassCheckTimer = setTimeout(() => {
     if (orientationEventCount === 0 && S.isHiking) {
