@@ -369,7 +369,7 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v34-debug</div>
+  <div id="version-badge">v35-debug</div>
   <div id="zoom-badge"></div>
   <div id="debug-panel"></div>
 
@@ -813,7 +813,22 @@ function setMode(mode) {
    using a plain panTo. No secondary panBy, no padding options.
 ════════════════════════════════════════════════════════════════════ */
 function panToUser(latlng, animate) {
-  map.panTo(latlng, { animate: animate !== false, duration: 0.5 });
+  // We want the user dot to appear 75% down the screen (25% from bottom).
+  // Strategy: find the latlng that, if placed at screen centre, would put
+  // our target latlng at 75% down. We do this by:
+  // 1. Find the pixel position of the target latlng on screen
+  // 2. Find the pixel position 25% above screen centre  
+  // 3. Pan to the latlng that would be at screen centre if target is at 75%
+  const container = map.getContainer();
+  const h = container.offsetHeight;
+  const w = container.offsetWidth;
+  // The point we want to be at screen centre (shifted up by 25% of height)
+  const centrePoint = L.point(w / 2, h / 2 - h * 0.25);
+  // Convert: if latlng were at centrePoint, what latlng would be at true centre?
+  const targetPoint  = map.latLngToContainerPoint(latlng);
+  const delta        = targetPoint.subtract(centrePoint);
+  const newCentre    = map.containerPointToLatLng(L.point(w / 2 + delta.x, h / 2 + delta.y));
+  map.panTo(newCentre, { animate: animate !== false, duration: 0.5 });
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -825,7 +840,8 @@ function showRecenterBtn(show) {
 
 function recenterToUser() {
   if (!S.userLatLng) return;
-  map.setView(S.userLatLng, Math.max(map.getZoom(), S.hikingZoom), { animate: true });
+  if (map.getZoom() < S.hikingZoom) map.setZoom(S.hikingZoom);
+  panToUser(S.userLatLng, true);
   S.userMovedMap = false;
   showRecenterBtn(false);
   clearTimeout(S.recenterTimer);
@@ -898,11 +914,11 @@ function startGeolocation() {
         const wasHiking  = S.isHiking;
         setMode(shouldHike ? 'hiking' : 'browsing');
 
-        // First time entering hiking mode — snap to user at hiking zoom
         if (shouldHike && !wasHiking && !S.hasCentered) {
           S.hasCentered = true;
-          map.setView(latlng, S.hikingZoom, { animate: true });
-          return;  // skip the regular follow this tick
+          map.setZoom(S.hikingZoom);
+          panToUser(latlng, false);
+          return;
         }
       }
 
@@ -952,7 +968,8 @@ document.getElementById('locate-btn').addEventListener('click', () => {
       S.userMovedMap = false;
       btn.textContent = 'Go to Park';
       btn.classList.add('go-park');
-      map.setView(S.userLatLng, Math.max(map.getZoom(), S.hikingZoom), { animate: true });
+      if (map.getZoom() < S.hikingZoom) map.setZoom(S.hikingZoom);
+      panToUser(S.userLatLng, true);
       // While isTracking in browse mode, pan on each GPS update
     } else {
       showToast('Waiting for location…');
