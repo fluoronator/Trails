@@ -379,7 +379,7 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v45-debug</div>
+  <div id="version-badge">v46-debug</div>
   <div id="zoom-badge"></div>
   <div id="debug-panel"></div>
 
@@ -823,16 +823,36 @@ function setMode(mode) {
    using a plain panTo. No secondary panBy, no padding options.
 ════════════════════════════════════════════════════════════════════ */
 function panToUser(latlng, animate) {
-  // Use window dimensions (not container) since container is now larger than screen.
-  // We want the user dot at 75% down the screen.
-  const W = window.innerWidth;
-  const H = window.innerHeight;
-  const targetPx  = map.latLngToContainerPoint(latlng);
-  const desiredPx = L.point(W * 0.5, H * 0.75);
-  const delta     = targetPx.subtract(desiredPx);
-  const newCentre = map.containerPointToLatLng(
-    L.point(W * 0.5 + delta.x, H * 0.5 + delta.y)
+  // The map container is 400vmax × 400vmax, centred at screen (50vw, 75vh).
+  // latLngToContainerPoint returns coords in container space.
+  // We need to convert to screen space to find where the dot currently appears.
+  const vmax = Math.max(window.innerWidth, window.innerHeight);
+  const containerW = 4 * vmax;
+  const containerH = 4 * vmax;
+  // Container top-left in screen coordinates
+  const containerOriginX = window.innerWidth  * 0.5  - containerW * 0.5;
+  const containerOriginY = window.innerHeight * 0.75 - containerH * 0.5;
+
+  // Where the latlng currently appears in container space
+  const ptContainer = map.latLngToContainerPoint(latlng);
+  // Convert to screen space
+  const ptScreen = L.point(
+    ptContainer.x + containerOriginX,
+    ptContainer.y + containerOriginY
   );
+  // Where we want it on screen: 75% down, 50% across
+  const desiredScreen = L.point(
+    window.innerWidth  * 0.5,
+    window.innerHeight * 0.75
+  );
+  // Delta in screen space
+  const delta = ptScreen.subtract(desiredScreen);
+  // The new map centre in container space
+  const newCentreContainer = L.point(
+    containerW * 0.5 + delta.x,
+    containerH * 0.5 + delta.y
+  );
+  const newCentre = map.containerPointToLatLng(newCentreContainer);
   map.panTo(newCentre, { animate: animate !== false, duration: 0.5 });
 }
 
