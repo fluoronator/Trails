@@ -375,7 +375,7 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v53</div>
+  <div id="version-badge">v54</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -1286,6 +1286,49 @@ function checkCompassOnHikingStart() {
     }
   }, 3000);
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   FIX PINCH-ZOOM UNDER MAP ROTATION
+   Placed here so currentHeading is already declared above.
+   Patches Leaflet's TouchZoom handler after map is ready.
+════════════════════════════════════════════════════════════════════ */
+map.whenReady(function() {
+  const tz = map.touchZoom;
+  if (!tz) return;
+
+  function makePinchSynth(e) {
+    if (!currentHeading || !e.touches || e.touches.length < 2) return e;
+    const cx  = window.innerWidth  * 0.5;
+    const cy  = window.innerHeight * 0.75;
+    const rad = currentHeading * Math.PI / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+
+    function rot(t) {
+      const dx = t.clientX - cx, dy = t.clientY - cy;
+      return {
+        clientX:    cx + dx * cos - dy * sin,
+        clientY:    cy + dx * sin + dy * cos,
+        identifier: t.identifier,
+        target:     t.target,
+      };
+    }
+
+    const fake = [rot(e.touches[0]), rot(e.touches[1])];
+    return new Proxy(e, {
+      get(target, prop) {
+        if (prop === 'touches') return fake;
+        const val = target[prop];
+        return typeof val === 'function' ? val.bind(target) : val;
+      }
+    });
+  }
+
+  const origStart = tz._onTouchStart.bind(tz);
+  const origMove  = tz._onTouchMove.bind(tz);
+  tz._onTouchStart = e => origStart(makePinchSynth(e));
+  tz._onTouchMove  = e => origMove(makePinchSynth(e));
+});
 
 /* ═══════════════════════════════════════════════════════════════════
    BOOT
