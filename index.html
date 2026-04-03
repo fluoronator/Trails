@@ -375,7 +375,7 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v55</div>
+  <div id="version-badge">v56</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -1314,7 +1314,9 @@ map.whenReady(function() {
       };
     }
 
-    const fake = [rot(e.touches[0]), rot(e.touches[1])];
+    // Build a proper array (not just object) so .length and iteration work
+    const fake = Object.assign([rot(e.touches[0]), rot(e.touches[1])], { length: 2 });
+
     return new Proxy(e, {
       get(target, prop) {
         if (prop === 'touches') return fake;
@@ -1326,30 +1328,7 @@ map.whenReady(function() {
 
   const origStart = tz._onTouchStart.bind(tz);
   const origMove  = tz._onTouchMove.bind(tz);
-
-  tz._onTouchStart = function(e) {
-    // Let Leaflet store its reference points normally
-    origStart(e);
-    // Now rotate whatever Leaflet stored as the pinch centre
-    if (!currentHeading) return;
-    const cx  = window.innerWidth  * 0.5;
-    const cy  = window.innerHeight * 0.75;
-    const rad = currentHeading * Math.PI / 180;
-    const cos = Math.cos(rad);
-    const sin = Math.sin(rad);
-    // Leaflet stores the pinch centre in tz._startDist, tz._startZoom, tz._moved
-    // and the centre point in tz._centerPoint or map.touchZoom._centerPoint
-    // Rotate _centerPoint if it exists
-    if (tz._centerPoint) {
-      const dx = tz._centerPoint.x - cx;
-      const dy = tz._centerPoint.y - cy;
-      tz._centerPoint = L.point(
-        cx + dx * cos - dy * sin,
-        cy + dx * sin + dy * cos
-      );
-    }
-  };
-
+  tz._onTouchStart = e => origStart(makePinchSynth(e));
   tz._onTouchMove  = e => origMove(makePinchSynth(e));
 });
 
