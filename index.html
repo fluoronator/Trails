@@ -538,7 +538,7 @@
     </div>
   </div>
 
-  <div id="version-badge">v80</div>
+  <div id="version-badge">v81</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -697,8 +697,22 @@ const TOAST_MS          = 2500;
    Falls back to the first park if no parameter or unrecognised id.
 ════════════════════════════════════════════════════════════════════ */
 const urlParkId    = new URLSearchParams(window.location.search).get('park');
-const selectedPark = PARKS.find(p => p.id === urlParkId) || PARKS[0];
-// GeoJSON filename is derived from park id — no need to specify separately
+
+// If a ?park= parameter is given, use it directly — no need to pre-register
+// in the PARKS array. The GeoJSON filename is always parkId + '.geojson'.
+// If no parameter given, fall back to the first park in the PARKS array.
+const selectedPark = urlParkId
+  ? (PARKS.find(p => p.id === urlParkId) || {
+      id:            urlParkId,
+      name:          urlParkId,   // GeoJSON name property will override this
+      hikingRadius:  SETTINGS.hikingRadius,
+      defaultZoom:   SETTINGS.browsingZoom,
+      hikingZoom:    SETTINGS.hikingZoom,
+      defaultCenter: null,
+    })
+  : PARKS[0];
+
+// GeoJSON filename is always derived from park id
 selectedPark.geojsonUrl = selectedPark.id + '.geojson';
 
 
