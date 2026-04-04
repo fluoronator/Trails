@@ -535,7 +535,7 @@
     </div>
   </div>
 
-  <div id="version-badge">v73</div>
+  <div id="version-badge">v74</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -1384,6 +1384,17 @@ function smoothRotation() {
 function handleOrientation(e) {
   orientationEventCount++;
   if (orientationEventCount === 1) showCompassBtn(false);
+
+  // Only rotate the map in hiking mode
+  if (!window.isHikingMode) {
+    // Reset to north if we were previously rotated
+    if (currentHeading !== 0 || targetHeading !== 0) {
+      currentHeading = 0;
+      targetHeading  = 0;
+      applyRotation(0);
+    }
+    return;
+  }
 
   let raw;
   if (typeof e.webkitCompassHeading === 'number' && e.webkitCompassHeading >= 0) {
