@@ -535,7 +535,7 @@
     </div>
   </div>
 
-  <div id="version-badge">v74</div>
+  <div id="version-badge">v75</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -1385,17 +1385,7 @@ function handleOrientation(e) {
   orientationEventCount++;
   if (orientationEventCount === 1) showCompassBtn(false);
 
-  // Only rotate the map in hiking mode
-  if (!window.isHikingMode) {
-    // Reset to north if we were previously rotated
-    if (currentHeading !== 0 || targetHeading !== 0) {
-      currentHeading = 0;
-      targetHeading  = 0;
-      applyRotation(0);
-    }
-    return;
-  }
-
+  // Get raw heading regardless of mode
   let raw;
   if (typeof e.webkitCompassHeading === 'number' && e.webkitCompassHeading >= 0) {
     raw = e.webkitCompassHeading;
@@ -1407,6 +1397,19 @@ function handleOrientation(e) {
     return;
   }
 
+  if (!window.isHikingMode) {
+    // Browsing mode — update the needle only, keep map north-up
+    northArrow.style.transform = `rotate(${-raw}deg)`;
+    // Reset map rotation if we were previously in hiking mode
+    if (currentHeading !== 0 || targetHeading !== 0) {
+      currentHeading = 0;
+      targetHeading  = 0;
+      mapWrapper.style.transform = 'rotate(0deg)';
+    }
+    return;
+  }
+
+  // Hiking mode — rotate the map
   targetHeading += shortestDelta(targetHeading, raw);
 
   if (!smoothingActive) {
