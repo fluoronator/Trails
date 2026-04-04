@@ -237,6 +237,130 @@
       pointer-events: none;
     }
 
+    /* ── FEEDBACK BUTTON ── */
+    #feedback-btn {
+      background: none;
+      border: none;
+      font-size: 20px;
+      cursor: pointer;
+      padding: 4px 6px;
+      border-radius: 8px;
+      line-height: 1;
+      flex-shrink: 0;
+      opacity: 0.75;
+      transition: opacity 0.2s;
+    }
+    #feedback-btn:active { opacity: 1; }
+
+    /* ── FEEDBACK OVERLAY ── */
+    #feedback-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      z-index: 2500;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    #feedback-overlay.hidden { display: none; }
+
+    #feedback-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      width: 100%;
+      max-width: 380px;
+      padding: 20px;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.6);
+    }
+
+    #feedback-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    #feedback-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    #feedback-close {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 18px;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 6px;
+      line-height: 1;
+    }
+    #feedback-close:active { background: var(--border); }
+
+    #feedback-form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    #feedback-message {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 14px;
+      font-family: inherit;
+      padding: 10px 12px;
+      resize: none;
+      height: 120px;
+      outline: none;
+    }
+    #feedback-message:focus { border-color: var(--blue); }
+    #feedback-contact {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
+      padding: 10px 12px;
+      outline: none;
+    }
+    #feedback-contact:focus { border-color: var(--blue); }
+    #feedback-contact::placeholder,
+    #feedback-message::placeholder { color: var(--muted); }
+
+    #feedback-submit {
+      background: var(--blue);
+      color: #000;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      padding: 12px;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    #feedback-submit:active { opacity: 0.75; }
+
+    #feedback-thankyou {
+      text-align: center;
+      padding: 20px 0 8px;
+    }
+    #feedback-thankyou.hidden { display: none; }
+    #feedback-thanks-icon {
+      font-size: 40px;
+      color: var(--green);
+      margin-bottom: 10px;
+    }
+    #feedback-thanks-text {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
     /* ── IOS COMPASS TAP OVERLAY ── */
     #tap-overlay {
       position: absolute;
@@ -382,9 +506,32 @@
   <div id="top-bar">
     <div id="park-name">🥾 Trail Navigator</div>
     <div id="mode-badge" class="browsing">Browsing</div>
+    <button id="feedback-btn" title="Send feedback">💬</button>
   </div>
 
-  <div id="version-badge">v67</div>
+  <!-- Feedback overlay -->
+  <div id="feedback-overlay" class="hidden">
+    <div id="feedback-panel">
+      <div id="feedback-header">
+        <div id="feedback-title">Feedback</div>
+        <button id="feedback-close">✕</button>
+      </div>
+      <form id="feedback-form" action="https://formspree.io/f/xreoyiyz" method="POST">
+        <textarea name="message" id="feedback-message" 
+          placeholder="Bug report, suggestion, or general feedback…" 
+          required></textarea>
+        <input type="text" name="contact" id="feedback-contact"
+          placeholder="Email or phone (optional — leave blank to stay anonymous)" />
+        <button type="submit" id="feedback-submit">Send Feedback</button>
+      </form>
+      <div id="feedback-thankyou" class="hidden">
+        <div id="feedback-thanks-icon">✓</div>
+        <div id="feedback-thanks-text">Thanks for your feedback!</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="version-badge">v68</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -1429,8 +1576,60 @@ map.whenReady(function() {
 });
 
 /* ═══════════════════════════════════════════════════════════════════
-   BOOT
+   FEEDBACK FORM
 ════════════════════════════════════════════════════════════════════ */
+document.getElementById('feedback-btn').addEventListener('click', () => {
+  // Reset form state each time it opens
+  document.getElementById('feedback-form').classList.remove('hidden');
+  document.getElementById('feedback-thankyou').classList.add('hidden');
+  document.getElementById('feedback-message').value = '';
+  document.getElementById('feedback-contact').value = '';
+  document.getElementById('feedback-overlay').classList.remove('hidden');
+});
+
+document.getElementById('feedback-close').addEventListener('click', () => {
+  document.getElementById('feedback-overlay').classList.add('hidden');
+});
+
+// Close on backdrop tap
+document.getElementById('feedback-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('feedback-overlay')) {
+    document.getElementById('feedback-overlay').classList.add('hidden');
+  }
+});
+
+document.getElementById('feedback-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = document.getElementById('feedback-submit');
+  btn.textContent = 'Sending…';
+  btn.disabled = true;
+
+  try {
+    const response = await fetch('https://formspree.io/f/xreoyiyz', {
+      method: 'POST',
+      headers: { 'Accept': 'application/json' },
+      body: new FormData(e.target),
+    });
+    if (response.ok) {
+      document.getElementById('feedback-form').classList.add('hidden');
+      document.getElementById('feedback-thankyou').classList.remove('hidden');
+      // Auto-close after 2.5 seconds
+      setTimeout(() => {
+        document.getElementById('feedback-overlay').classList.add('hidden');
+      }, 2500);
+    } else {
+      showToast('Could not send — please try again');
+      btn.textContent = 'Send Feedback';
+      btn.disabled = false;
+    }
+  } catch {
+    showToast('Could not send — check your connection');
+    btn.textContent = 'Send Feedback';
+    btn.disabled = false;
+  }
+});
+
+
 loadPark(S.park);
 </script>
 </body>
