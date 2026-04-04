@@ -385,13 +385,13 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v65</div>
+  <div id="version-badge">v66</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
 
   <!-- North arrow: counter-rotates to always point true north -->
-  <div id="north-arrow" class="hidden">
+  <div id="north-arrow">
     <svg viewBox="0 0 40 40" width="36" height="36">
       <polygon points="20,4 26,20 20,17 14,20" fill="#e74c3c"/>
       <polygon points="20,36 26,20 20,23 14,20" fill="#888"/>
@@ -851,15 +851,12 @@ function setMode(mode) {
 
   const badge   = document.getElementById('mode-badge');
   const locBtn  = document.getElementById('locate-btn');
-  const arrow   = document.getElementById('north-arrow');
   const wrapper = document.getElementById('map-rotate-wrapper');
 
   if (hiking) {
     badge.textContent = '⛰ Hiking';
     badge.className   = 'hiking';
     locBtn.classList.add('hidden');
-    arrow.classList.remove('hidden');
-    // Only reset follow state on the transition into hiking mode
     if (!wasHiking) {
       S.userMovedMap = false;
       showRecenterBtn(false);
@@ -869,13 +866,8 @@ function setMode(mode) {
     badge.textContent = '🗺 Browsing';
     badge.className   = 'browsing';
     locBtn.classList.remove('hidden');
-    arrow.classList.add('hidden');
     showCompassBtn(false);
     clearTimeout(compassCheckTimer);
-    wrapper.style.transform = 'rotate(0deg)';
-    window.mapRotationDeg   = 0;
-    currentHeading = 0;
-    targetHeading  = 0;
   }
 }
 
@@ -1245,24 +1237,12 @@ function handleOrientation(e) {
   orientationEventCount++;
   if (orientationEventCount === 1) showCompassBtn(false);
 
-  if (!window.isHikingMode) {
-    if (currentHeading !== 0 || targetHeading !== 0) {
-      targetHeading = currentHeading;
-      applyRotation(0);
-      currentHeading = 0; targetHeading = 0;
-    }
-    return;
-  }
-
   let raw;
   if (typeof e.webkitCompassHeading === 'number' && e.webkitCompassHeading >= 0) {
-    // iOS: webkitCompassHeading is clockwise degrees from true north — use directly
     raw = e.webkitCompassHeading;
   } else if (e.absolute && e.alpha != null) {
-    // Android deviceorientationabsolute: alpha is CCW from true north, convert to CW
     raw = (360 - e.alpha) % 360;
   } else if (e.alpha != null) {
-    // Android fallback deviceorientation: alpha is CCW from arbitrary reference
     raw = (360 - e.alpha) % 360;
   } else {
     return;
