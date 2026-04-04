@@ -344,6 +344,10 @@
       transition: opacity 0.2s;
     }
     #feedback-submit:active { opacity: 0.75; }
+    #feedback-submit:disabled {
+      opacity: 0.35;
+      cursor: default;
+    }
 
     #feedback-thankyou {
       text-align: center;
@@ -521,8 +525,8 @@
           placeholder="Bug report, suggestion, or general feedback…" 
           required></textarea>
         <input type="text" name="contact" id="feedback-contact"
-          placeholder="Email or phone (optional — leave blank to stay anonymous)" />
-        <button type="submit" id="feedback-submit">Send Feedback</button>
+          placeholder="Contact info (optional — stay anonymous)" />
+        <button type="submit" id="feedback-submit" disabled>Send Feedback</button>
       </form>
       <div id="feedback-thankyou" class="hidden">
         <div id="feedback-thanks-icon">✓</div>
@@ -531,7 +535,7 @@
     </div>
   </div>
 
-  <div id="version-badge">v68</div>
+  <div id="version-badge">v70</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -1584,6 +1588,7 @@ document.getElementById('feedback-btn').addEventListener('click', () => {
   document.getElementById('feedback-thankyou').classList.add('hidden');
   document.getElementById('feedback-message').value = '';
   document.getElementById('feedback-contact').value = '';
+  document.getElementById('feedback-submit').disabled = true;
   document.getElementById('feedback-overlay').classList.remove('hidden');
 });
 
@@ -1598,7 +1603,11 @@ document.getElementById('feedback-overlay').addEventListener('click', e => {
   }
 });
 
-document.getElementById('feedback-form').addEventListener('submit', async e => {
+document.getElementById('feedback-message').addEventListener('input', e => {
+  document.getElementById('feedback-submit').disabled = e.target.value.trim() === '';
+});
+
+
   e.preventDefault();
   const btn = document.getElementById('feedback-submit');
   btn.textContent = 'Sending…';
