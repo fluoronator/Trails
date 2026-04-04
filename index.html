@@ -2,14 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <!--
-    viewport-fit=cover: extends the page into the notch/home-indicator area on iPhone.
-    Without this, the bottom bar can be hidden behind the home indicator bar on newer iPhones.
-    maximum-scale=1.0, user-scalable=no: prevents the browser's own pinch-zoom from
-    interfering with Leaflet's pinch-zoom handler.
-  -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <!-- Makes the app behave like a native app when added to iPhone home screen -->
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>Trail Navigator</title>
@@ -41,52 +34,21 @@
       color: var(--text);
     }
 
-    /*
-     * ══════════════════════════════════════════════════════════════
-     * MAP ROTATION ARCHITECTURE — READ THIS BEFORE EDITING
-     * ══════════════════════════════════════════════════════════════
-     *
-     * PROBLEM: CSS transform: rotate() rotates around the element's
-     * centre by default. The user's location dot is deliberately placed
-     * at 75% down the screen (not centre) so the hiker sees more trail
-     * ahead. If we rotated around the screen centre, the dot would orbit
-     * around a point above it, which looks wrong and disorienting.
-     *
-     * SOLUTION: The wrapper is 100vw × 100vh but CSS-scaled up by a
-     * factor large enough to cover screen corners at any rotation.
-     * transform-origin is set to (50%, 75%) so rotation pivots around
-     * the dot position, not the screen centre.
-     *
-     * SCALE FACTOR: Calculated in JS by computeWrapperScale() based on
-     * actual screen dimensions. Stored in WRAPPER_SCALE constant.
-     *
-     * PERFORMANCE: Because the wrapper is 100vw × 100vh before scaling,
-     * Leaflet thinks it's filling a normal screen-sized container and
-     * only loads the tiles needed for that area. The CSS scale just
-     * stretches those tiles visually — no extra tile requests.
-     * This is much faster than the 400vmax approach which caused Leaflet
-     * to load tiles for a massive area on every pan and zoom.
-     *
-     * VISUAL ZOOM CORRECTION: CSS scale() makes tiles appear larger
-     * (zoom 18 looks like zoom 20). We correct this by telling Leaflet
-     * to use a zoom offset via map options. See MAP INIT section.
-     *
-     * COORDINATE SPACES (important for panToUser and drag patch):
-     * - Screen space: pixels relative to the device screen top-left
-     * - Container space: pixels relative to the wrapper top-left
-     * With scale(), these ARE the same before scaling — Leaflet's
-     * container coords match screen coords since the wrapper starts
-     * at (0,0). The pivot offset is handled via transform-origin.
-     * ══════════════════════════════════════════════════════════════
-     */
-
-    /* Scale factor computed in JS — CSS default is a safe fallback */
     #map-rotate-wrapper {
       position: fixed;
-      top: 0; left: 0;
-      width: 100vw; height: 100vh;
-      transform-origin: 50% 75%;  /* pivot at dot position (50vw, 75vh) */
-      transform: scale(1);         /* updated by JS on load and applyRotation() */
+      /* Size the container large enough that its corners always cover
+         the screen at any rotation angle, for any phone aspect ratio.
+         We centre it on the 75% pivot point using negative margins.
+         400vmax is generous enough for any current or future device —
+         tiles outside the visible area are cached and never re-fetched. */
+      width: 400vmax;
+      height: 400vmax;
+      top: 75vh;
+      left: 50vw;
+      margin-top: -200vmax;
+      margin-left: -200vmax;
+      transform-origin: 50% 50%;
+      transform: rotate(0deg);
       will-change: transform;
       z-index: 1;
     }
@@ -96,18 +58,12 @@
       height: 100%;
     }
 
-    /*
-     * UI overlay sits above the map wrapper and is NEVER rotated.
-     * pointer-events: none lets touches fall through to the map.
-     * Individual controls re-enable pointer-events via the > * rule.
-     * IMPORTANT: Never put the map or anything that should rotate
-     * inside this element.
-     */
     #ui-overlay {
       position: fixed;
       top: 0; left: 0;
       width: 100vw; height: 100vh;
-      height: 100dvh;  /* dvh accounts for browser chrome on mobile */
+      /* Use dvh so overlay matches actual visible browser height */
+      height: 100dvh;
       z-index: 1000;
       pointer-events: none;
     }
@@ -543,20 +499,6 @@
 </head>
 <body>
 
-<!--
-  TWO-ELEMENT STRUCTURE — do not change this without understanding the rotation system.
-
-  #map-rotate-wrapper: The ONLY thing that rotates. Contains just the Leaflet map div.
-    - Size: 100vw × 100vh (screen-sized so Leaflet loads only visible tiles)
-    - CSS scaled up by WRAPPER_SCALE so corners are covered during rotation
-    - transform-origin: 50% 75% — pivot at the user dot position
-    - Rotation: CSS transform applied by applyRotation() in JS
-
-  #ui-overlay: Never rotates. Contains all buttons, badges, labels, overlays.
-    - Size: exactly 100vw × 100vh
-    - Always upright regardless of map heading
--->
-
 <!-- ═══ ROTATION WRAPPER — only this div gets rotated ═══ -->
 <div id="map-rotate-wrapper">
   <div id="map"></div>
@@ -593,7 +535,7 @@
     </div>
   </div>
 
-  <div id="version-badge">v72</div>
+  <div id="version-badge">v73</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -756,40 +698,6 @@ window.isHikingMode = false;
 ════════════════════════════════════════════════════════════════════ */
 const map = L.map('map', { zoomControl: false, attributionControl: true });
 
-/*
- * Compute the CSS scale factor needed to ensure the wrapper covers all
- * screen corners at any rotation angle, given pivot at (50%, 75%).
- * The limiting factor is the shortest distance from pivot to wrapper edge,
- * which must reach the furthest corner.
- * pivot = (W/2, 0.75H). Furthest corner = top-left or top-right.
- * Distance to top-left = sqrt((W/2)² + (0.75H)²)
- * Shortest edge distance from pivot = min(W/2, 0.75H, W/2, 0.25H) = 0.25H
- * Scale = (maxCornerDist / minEdgeDist) × 1.15 safety margin
- */
-function computeWrapperScale() {
-  const W = window.innerWidth;
-  const H = window.innerHeight;
-  const px = W * 0.5, py = H * 0.75;
-  const maxDist = Math.max(
-    Math.sqrt(px*px + py*py),
-    Math.sqrt((W-px)*(W-px) + py*py),
-    Math.sqrt(px*px + (H-py)*(H-py)),
-    Math.sqrt((W-px)*(W-px) + (H-py)*(H-py))
-  );
-  const minEdge = Math.min(px, W-px, py, H-py);
-  return (maxDist / minEdge) * 1.15;
-}
-
-const WRAPPER_SCALE = computeWrapperScale();
-
-// Apply scale immediately and on resize (e.g. device rotation)
-document.getElementById('map-rotate-wrapper').style.transform = `scale(${WRAPPER_SCALE})`;
-window.addEventListener('resize', () => {
-  const s = computeWrapperScale();
-  document.getElementById('map-rotate-wrapper').style.transform =
-    `scale(${s}) rotate(${((currentHeading||0) % 360 + 360) % 360 === 0 ? 0 : -(currentHeading||0)}deg)`;
-});
-
 let activeTileLayer = null;
 function setTileLayer(name) {
   if (activeTileLayer) map.removeLayer(activeTileLayer);
@@ -819,16 +727,6 @@ function showToast(msg, ms = TOAST_MS) {
 }
 
 
-/*
- * GeoJSON STYLE HELPERS
- * Reads formatting directly from GeoJSON feature properties.
- * This means trail colors, widths, and polygon fills are all
- * controlled by the GeoJSON file — no hardcoding needed.
- * Properties read: stroke, stroke-width, stroke-opacity,
- *                  fill, fill-opacity
- * The POI icon color is also read from properties.stroke.
- * POI icon shape and size are hardcoded in makePOIIcon().
- */
 function styleForLine(p) {
   return {
     color:    p.stroke            || '#FF0000',
@@ -1121,47 +1019,43 @@ function setMode(mode) {
   }
 }
 
-/*
- * ══════════════════════════════════════════════════════════════
- * panToUser() — KEEP USER DOT AT 75% DOWN THE SCREEN
- * ══════════════════════════════════════════════════════════════
- *
- * GOAL: When following the user, pan the map so the user's dot
- * appears at 75% down the screen (not centre), giving more view
- * of the trail ahead.
- *
- * PROBLEM: map.panTo(latlng) centres latlng on the map's centre
- * point. But we want latlng at 75% down screen, not at centre.
- * Leaflet's padding options only work with fitBounds, not panTo.
- *
- * SOLUTION: Calculate what latlng needs to be at the map's centre
- * in order for our target latlng to appear at screen (50%, 75%).
- *
- * COORDINATE SPACE: The wrapper is 100vw × 100vh, so Leaflet's
- * container coords match screen coords directly. Simple delta math.
- *
- * PREVIOUS FAILED APPROACHES (do not retry these):
- * - panTo + panBy: panBy is intercepted by the rotation patch, causing
- *   the map to jump to wrong locations when rotated.
- * - map.project/unproject: uses global pixel coords, not container-
- *   relative, gives wrong results when map isn't centred on [0,0].
- * - paddingBottomRight on panTo: panTo ignores padding options entirely.
- * - 400vmax container: Works geometrically but causes Leaflet to load
- *   tiles for the entire huge container on every pan — very slow.
- * ══════════════════════════════════════════════════════════════
- */
+/* ═══════════════════════════════════════════════════════════════════
+   OFFSET PAN — keeps user dot at 3/4 down the screen in hiking mode.
+   Works by converting the target latlng to a pixel point, shifting it
+   up by 25% of screen height, then converting back to latlng and
+   using a plain panTo. No secondary panBy, no padding options.
+════════════════════════════════════════════════════════════════════ */
 function panToUser(latlng, animate) {
-  const W = window.innerWidth;
-  const H = window.innerHeight;
-  // Where the latlng currently appears on screen (container = screen here)
-  const targetPx  = map.latLngToContainerPoint(latlng);
-  // Where we want it: 75% down the screen
-  const desiredPx = L.point(W * 0.5, H * 0.75);
-  const delta     = targetPx.subtract(desiredPx);
-  // Shift the map centre by the same delta
-  const newCentre = map.containerPointToLatLng(
-    L.point(W * 0.5 + delta.x, H * 0.5 + delta.y)
+  // The map container is 400vmax × 400vmax, centred at screen (50vw, 75vh).
+  // latLngToContainerPoint returns coords in container space.
+  // We need to convert to screen space to find where the dot currently appears.
+  const vmax = Math.max(window.innerWidth, window.innerHeight);
+  const containerW = 4 * vmax;
+  const containerH = 4 * vmax;
+  // Container top-left in screen coordinates
+  const containerOriginX = window.innerWidth  * 0.5  - containerW * 0.5;
+  const containerOriginY = window.innerHeight * 0.75 - containerH * 0.5;
+
+  // Where the latlng currently appears in container space
+  const ptContainer = map.latLngToContainerPoint(latlng);
+  // Convert to screen space
+  const ptScreen = L.point(
+    ptContainer.x + containerOriginX,
+    ptContainer.y + containerOriginY
   );
+  // Where we want it on screen: 75% down, 50% across
+  const desiredScreen = L.point(
+    window.innerWidth  * 0.5,
+    window.innerHeight * 0.75
+  );
+  // Delta in screen space
+  const delta = ptScreen.subtract(desiredScreen);
+  // The new map centre in container space
+  const newCentreContainer = L.point(
+    containerW * 0.5 + delta.x,
+    containerH * 0.5 + delta.y
+  );
+  const newCentre = map.containerPointToLatLng(newCentreContainer);
   map.panTo(newCentre, { animate: animate !== false, duration: 0.5 });
 }
 
@@ -1203,36 +1097,12 @@ function resetRecenterTimer() {
    MAP DRAG / ZOOM — detect manual interaction
 ════════════════════════════════════════════════════════════════════ */
 
-/*
- * isTouching FLAG — prevents GPS pans while finger is on screen.
- *
- * Without this, a GPS position update arriving mid-swipe would call
- * panToUser(), which fights the drag and causes a jarring jump-back.
- * By checking isTouching in the GPS callback, we skip the pan entirely
- * while the finger is down. The map resumes following on next GPS
- * update after the finger lifts.
- */
 // Track whether finger is currently on screen — block GPS pans during touch
 let isTouching = false;
 document.addEventListener('touchstart', () => { isTouching = true;  }, { passive: true });
 document.addEventListener('touchend',   () => { isTouching = false; }, { passive: true });
 document.addEventListener('touchcancel',() => { isTouching = false; }, { passive: true });
 
-/*
- * userMovedMap FLAG — controls whether GPS follow is active.
- *
- * Set to TRUE on dragstart/zoomstart (user manually moved the map).
- * Set to FALSE when recenterToUser() is called or hiking mode starts.
- *
- * CRITICAL: setMode() only resets userMovedMap on the TRANSITION into
- * hiking mode (wasHiking check), not on every GPS update. If it reset
- * on every GPS update, any drag would be immediately overridden.
- *
- * The recenter timer (resetRecenterTimer) starts counting ONLY after
- * dragend — not during the drag. This prevents the map snapping back
- * mid-swipe during multi-swipe exploration. isTouching is also checked
- * before the snap-back fires so consecutive swipes don't trigger it.
- */
 map.on('dragstart', () => {
   S.userMovedMap = true;
   if (S.isHiking) showRecenterBtn(true);
@@ -1361,50 +1231,28 @@ document.querySelectorAll('.layer-btn').forEach(btn =>
   btn.addEventListener('click', () => setTileLayer(btn.dataset.layer))
 );
 
-/*
- * ══════════════════════════════════════════════════════════════
- * FIX 1: DRAG PANNING UNDER MAP ROTATION
- * ══════════════════════════════════════════════════════════════
- *
- * PROBLEM: When the map wrapper is CSS-rotated, Leaflet's drag handler
- * reads touch/mouse positions in raw screen pixels. Screen-right is no
- * longer map-right when the map is rotated, so dragging goes the wrong
- * direction (e.g. facing east, swiping right moves the map south).
- *
- * SOLUTION: Patch Leaflet's internal Draggable._onMove to rotate the
- * incoming pointer coordinates by +heading around the pivot point
- * (50vw, 75vh) before Leaflet reads them. This makes Leaflet "see"
- * the pointer in map-north-up space, so its delta math is correct.
- *
- * WHY WE PATCH _onMove AND NOT panBy:
- * Patching map.panBy() was tried first but failed because panBy is
- * also called by setView, fitBounds, panTo, and all GPS follow calls.
- * Rotating those caused the map to jump to wrong locations constantly.
- * _onMove is only called by the drag handler — safe to patch.
- *
- * THE FIRST-MOVE JUMP FIX:
- * Leaflet stores the drag start point in draggable._startPoint in raw
- * screen coords (set by _onDown which fires before our patch). The first
- * _onMove call computes delta = rotatedPointer - rawStartPoint, which
- * is a large wrong value → jump. Fix: at the start of each _onMove, if
- * _startPoint changed (new drag started), immediately rotate it to match
- * the rotated coord space. We detect "new drag" by checking if the raw
- * pointer jumped > 20px from the last known position (finger lifted).
- *
- * NOTE: map.whenReady() runs before currentHeading is declared, so the
- * patch accesses currentHeading as a closure variable. The second
- * whenReady block (pinch zoom fix) is placed AFTER currentHeading is
- * declared to avoid a ReferenceError.
- * ══════════════════════════════════════════════════════════════
- */
+/* ═══════════════════════════════════════════════════════════════════
+   FIX PANNING UNDER MAP ROTATION
+   Problem: The map wrapper is CSS-rotated, but Leaflet's drag handler
+   computes deltas in raw screen pixels. Those screen pixels don't align
+   with map axes when rotated, so panning goes the wrong direction.
+
+   Fix: Hook into Leaflet's Draggable after map init. Before Leaflet
+   records each pointer position, rotate the pointer coordinates by
+   +heading around the map centre. This makes Leaflet "see" pointer
+   movement as if the map were north-up, so its delta math is correct.
+
+   We rotate the pointer, not the delta, because Leaflet's Draggable
+   stores absolute positions and diffs them internally.
+════════════════════════════════════════════════════════════════════ */
 map.whenReady(function() {
   const draggable = map.dragging._draggable;
   if (!draggable) return;
 
   // Rotate a screen point around the map container centre by `deg` degrees
   function rotatePointAroundCenter(x, y, deg) {
-    // Pivot at screen (50%, 75%) — matches transform-origin: 50% 75%
-    // Container is 100vw×100vh so screen coords = container coords
+    // Pivot is at screen position (50vw, 75vh) — use window dimensions
+    // since the map container is now much larger than the screen
     const cx  = window.innerWidth  * 0.5;
     const cy  = window.innerHeight * 0.75;
     const rad = deg * Math.PI / 180;
@@ -1498,46 +1346,11 @@ map.whenReady(function() {
   });
 });
 
-/*
- * ══════════════════════════════════════════════════════════════
- * COMPASS / MAP ROTATION
- * ══════════════════════════════════════════════════════════════
- *
- * applyRotation(heading) sets the CSS transform on #map-rotate-wrapper.
- * The map rotates by -heading (negative because a heading of 90° means
- * we're facing east, so the map needs to rotate counter-clockwise to
- * put east at the top).
- *
- * The north arrow SVG counter-rotates by -heading for the same reason:
- * it lives in the non-rotating UI overlay, so we rotate it to point
- * back at where north went on screen.
- *
- * UNBOUNDED HEADING (currentHeading, targetHeading):
- * These are never normalised to [0, 360). Instead we accumulate the
- * shortest-arc delta each sensor event. This prevents the 0°/360°
- * wraparound jump: without this, turning from 359° to 1° would cause
- * the animation to spin 358° the wrong way instead of just 2°.
- *
- * SMOOTHING: smoothRotation() uses a simple lerp (0.15 factor) with
- * requestAnimationFrame. It stops when delta < compassDeadZoneDeg to
- * avoid jittering from sensor noise.
- *
- * iOS COMPASS PERMISSION:
- * iOS 13+ requires DeviceOrientationEvent.requestPermission() to be
- * called from within a direct user gesture handler. On first load,
- * we silently call requestPermission() — if already granted (repeat
- * visit) it resolves immediately and we start listening with no UI.
- * If not granted, we show a full-screen tap overlay. One tap from the
- * user satisfies the gesture requirement and grants permission.
- * Safari remembers the permission per origin — once granted on HTTPS
- * it persists across sessions.
- *
- * Android uses deviceorientationabsolute (true north reference) with
- * fallback to deviceorientation after 500ms if absolute never fires.
- * Only ONE listener is registered — registering both would double the
- * rotation speed because handleOrientation fires twice per event.
- * ══════════════════════════════════════════════════════════════
- */
+/* ═══════════════════════════════════════════════════════════════════
+   COMPASS / MAP ROTATION
+   Rotates #map-rotate-wrapper. UI overlay never rotates.
+   Uses UNBOUNDED heading float to prevent wrap-around spin.
+════════════════════════════════════════════════════════════════════ */
 const mapWrapper = document.getElementById('map-rotate-wrapper');
 const northArrow = document.getElementById('north-arrow');
 
@@ -1550,8 +1363,7 @@ function shortestDelta(from, to) {
 }
 
 function applyRotation(heading) {
-  const scale = computeWrapperScale();
-  mapWrapper.style.transform = `scale(${scale}) rotate(${-heading}deg)`;
+  mapWrapper.style.transform = `rotate(${-heading}deg)`;
   northArrow.style.transform = `rotate(${-heading}deg)`;
   window.mapRotationDeg = ((heading % 360) + 360) % 360;
 }
@@ -1681,37 +1493,11 @@ function checkCompassOnHikingStart() {
   }
 }
 
-/*
- * ══════════════════════════════════════════════════════════════
- * FIX 2: PINCH-ZOOM UNDER MAP ROTATION
- * ══════════════════════════════════════════════════════════════
- *
- * PROBLEM: Same root cause as drag — Leaflet reads the pinch centre
- * in raw screen coords, but screen coords don't match map coords when
- * rotated. Result: pinch zoom centre jumps to the wrong location.
- *
- * SOLUTION — TWO PARTS:
- *
- * Part A (makePinchSynth + _onTouchStart/_onTouchMove):
- * Rotate both finger positions around the pivot before Leaflet reads
- * them. This fixes the ongoing zoom direction and keeps the centre
- * in the right place during the gesture.
- *
- * Part B (map.setView override):
- * At the END of a pinch gesture, Leaflet calls map.setView() with a
- * centre computed from the raw (unrotated) pinch midpoint. We intercept
- * setView() when pinching is active and rotate the centre point by the
- * inverse of the current heading to correct it.
- * The `pinching` flag is set on touchstart with 2 fingers, cleared on
- * touchend. setView is only intercepted when pinching is true.
- *
- * WHY THIS IS PLACED AFTER currentHeading DECLARATION:
- * This whenReady block references currentHeading. If placed before the
- * declaration (as was tried earlier), the callback fires immediately on
- * map ready and throws ReferenceError: currentHeading is not defined.
- * Always keep this block AFTER `let currentHeading = 0`.
- * ══════════════════════════════════════════════════════════════
- */
+/* ═══════════════════════════════════════════════════════════════════
+   FIX PINCH-ZOOM UNDER MAP ROTATION
+   Placed here so currentHeading is already declared above.
+   Patches Leaflet's TouchZoom handler after map is ready.
+════════════════════════════════════════════════════════════════════ */
 map.whenReady(function() {
   const tz = map.touchZoom;
   if (!tz) return;
@@ -1754,19 +1540,27 @@ map.whenReady(function() {
   const origSetView = map.setView.bind(map);
   map.setView = function(center, zoom, options) {
     if (pinching && currentHeading && center) {
-      // Container is 100vw×100vh so container coords = screen coords
-      const W = window.innerWidth, H = window.innerHeight;
-      const pt = map.latLngToContainerPoint(L.latLng(center));
+      // center is a latlng — convert to container pixels, rotate, convert back
+      const vmax = Math.max(window.innerWidth, window.innerHeight);
+      const cw = 4 * vmax, ch = 4 * vmax;
+      const originX = window.innerWidth  * 0.5 - cw * 0.5;
+      const originY = window.innerHeight * 0.75 - ch * 0.5;
 
-      const cx  = W * 0.5;
-      const cy  = H * 0.75;
-      const rad = -currentHeading * Math.PI / 180;
+      const pt = map.latLngToContainerPoint(L.latLng(center));
+      const sx = pt.x + originX;
+      const sy = pt.y + originY;
+
+      const cx  = window.innerWidth  * 0.5;
+      const cy  = window.innerHeight * 0.75;
+      const rad = -currentHeading * Math.PI / 180; // inverse rotation
       const cos = Math.cos(rad), sin = Math.sin(rad);
-      const dx = pt.x - cx, dy = pt.y - cy;
+      const dx = sx - cx, dy = sy - cy;
       const rx = cx + dx * cos - dy * sin;
       const ry = cy + dx * sin + dy * cos;
 
-      const rotated = map.containerPointToLatLng(L.point(rx, ry));
+      const rotated = map.containerPointToLatLng(
+        L.point(rx - originX, ry - originY)
+      );
       return origSetView(rotated, zoom, options);
     }
     return origSetView(center, zoom, options);
