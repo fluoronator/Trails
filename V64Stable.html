@@ -125,50 +125,28 @@
     }
     #north-arrow.hidden { opacity: 0; pointer-events: none; }
 
-    /* ── MAP CONTROLS (zoom + recenter) — below the compass ── */
-    #map-controls {
+    /* ── RECENTER BUTTON (appears when user pans in hiking mode) ── */
+    #recenter-btn {
       position: absolute;
-      top: 126px; right: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      z-index: 1001;
-    }
-
-    .map-ctrl-btn {
-      width: 44px; height: 44px;
-      background: rgba(13,17,23,0.88);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      color: var(--text);
-      font-size: 22px;
-      font-weight: 300;
+      bottom: 90px; right: 12px;
       display: flex;
       align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      transition: background 0.15s, transform 0.1s;
-      line-height: 1;
-      user-select: none;
-      -webkit-user-select: none;
-    }
-    .map-ctrl-btn:active {
-      transform: scale(0.92);
-      background: rgba(40,60,80,0.95);
-    }
-
-    /* Recenter button — highlighted when user has panned away */
-    #ctrl-recenter {
+      gap: 6px;
+      background: rgba(13,17,23,0.92);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
       color: var(--green);
-      border-color: rgba(63,185,80,0.35);
+      border: 1px solid rgba(63,185,80,0.4);
+      border-radius: 20px;
+      padding: 9px 14px;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      cursor: pointer;
+      transition: all 0.2s;
     }
-    #ctrl-recenter.hidden { display: none; }
-    #ctrl-recenter.dimmed {
-      color: var(--muted);
-      border-color: var(--border);
-    }
+    #recenter-btn:active { transform: scale(0.95); }
+    #recenter-btn.hidden { display: none; }
 
     /* ── BOTTOM BAR ── */
     #bottom-bar {
@@ -336,6 +314,13 @@
     .leaflet-control-attribution a { color: var(--blue) !important; }
 
     /* Hide default zoom (we use our own +/- via the map's built-in zoom ctrl) */
+    .leaflet-control-zoom a {
+      background: rgba(22,27,34,0.92) !important;
+      color: var(--text) !important;
+      border-color: var(--border) !important;
+    }
+    .leaflet-control-zoom a:hover { background: var(--surface) !important; }
+
     /* ── Trail name label ── */
     .trail-name-label {
       font-size: 7px;  /* overridden per zoom by buildTrailLabels */
@@ -385,7 +370,7 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v65</div>
+  <div id="version-badge">v64</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -400,21 +385,18 @@
     </svg>
   </div>
 
-  <!-- Map controls: zoom in, zoom out, recenter — below compass -->
-  <div id="map-controls">
-    <button class="map-ctrl-btn" id="ctrl-zoom-in"  aria-label="Zoom in">+</button>
-    <button class="map-ctrl-btn" id="ctrl-zoom-out" aria-label="Zoom out">−</button>
-    <button class="map-ctrl-btn dimmed" id="ctrl-recenter" aria-label="Return to my location">
-      <svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-           stroke="currentColor" stroke-width="2" stroke-linecap="round">
-        <circle cx="12" cy="12" r="4"/>
-        <line x1="12" y1="2"  x2="12" y2="7"/>
-        <line x1="12" y1="17" x2="12" y2="22"/>
-        <line x1="2"  y1="12" x2="7"  y2="12"/>
-        <line x1="17" y1="12" x2="22" y2="12"/>
-      </svg>
-    </button>
-  </div>
+  <!-- Recenter button: appears when user pans away in hiking mode -->
+  <button id="recenter-btn" class="hidden" onclick="recenterToUser()">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none"
+         stroke="currentColor" stroke-width="2.5">
+      <circle cx="12" cy="12" r="4"/>
+      <line x1="12" y1="2"  x2="12" y2="7"/>
+      <line x1="12" y1="17" x2="12" y2="22"/>
+      <line x1="2"  y1="12" x2="7"  y2="12"/>
+      <line x1="17" y1="12" x2="22" y2="12"/>
+    </svg>
+    Return to Me
+  </button>
 
   <!-- iOS compass permission overlay — shown on first load, dismissed on tap -->
   <div id="tap-overlay" class="hidden">
@@ -546,7 +528,7 @@ window.isHikingMode = false;
 /* ═══════════════════════════════════════════════════════════════════
    MAP INIT
 ════════════════════════════════════════════════════════════════════ */
-const map = L.map('map', { zoomControl: false, attributionControl: true });
+const map = L.map('map', { zoomControl: true, attributionControl: true });
 
 let activeTileLayer = null;
 function setTileLayer(name) {
@@ -923,12 +905,7 @@ function panToUser(latlng, animate) {
    RECENTER LOGIC
 ════════════════════════════════════════════════════════════════════ */
 function showRecenterBtn(show) {
-  const btn = document.getElementById('ctrl-recenter');
-  if (show) {
-    btn.classList.remove('dimmed');
-  } else {
-    btn.classList.add('dimmed');
-  }
+  document.getElementById('recenter-btn').classList.toggle('hidden', !show);
 }
 
 function recenterToUser() {
@@ -1082,10 +1059,6 @@ document.getElementById('locate-btn').addEventListener('click', () => {
     }
   }
 });
-
-document.getElementById('ctrl-zoom-in') .addEventListener('click', () => map.zoomIn());
-document.getElementById('ctrl-zoom-out').addEventListener('click', () => map.zoomOut());
-document.getElementById('ctrl-recenter').addEventListener('click', recenterToUser);
 
 document.querySelectorAll('.layer-btn').forEach(btn =>
   btn.addEventListener('click', () => setTileLayer(btn.dataset.layer))
