@@ -1608,6 +1608,7 @@ document.getElementById('feedback-message').addEventListener('input', e => {
 });
 
 
+document.getElementById('feedback-form').addEventListener('submit', async e => {
   e.preventDefault();
   const btn = document.getElementById('feedback-submit');
   btn.textContent = 'Sending…';
