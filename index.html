@@ -323,7 +323,7 @@
 
     /* ── Trail name label ── */
     .trail-name-label {
-      font-size: 7px;
+      font-size: 7px;  /* overridden per zoom by buildTrailLabels */
       font-weight: 700;
       letter-spacing: 0.04em;
       text-transform: uppercase;
@@ -370,7 +370,7 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v62</div>
+  <div id="version-badge">v63</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -451,6 +451,8 @@ const SETTINGS = {
   // ── TRAIL LABELS ─────────────────────────────────────────────────
   // Zoom level below which trail name labels disappear
   trailLabelMinZoom: 15,
+  // Trail label font size (px) at each zoom level — [zoom15, zoom16, zoom17, zoom18, zoom19+]
+  trailLabelFontSizes: [7, 8, 9, 11, 13],
 
   // ── MAP FOLLOWING BEHAVIOUR ──────────────────────────────────────
   // Seconds of inactivity before map snaps back to your location
@@ -655,9 +657,16 @@ function buildTrailLabels(geojsonData) {
     const color = p.stroke || '#333';
 
     const latlng = L.latLng(mid[1], mid[0]);
-    const html = `<div class="trail-name-label" style="transform:rotate(${angle}deg);color:${color};">${title}</div>`;
+    const zoom     = map.getZoom();
+    const minZoom  = SETTINGS.trailLabelMinZoom;
+    const sizes    = SETTINGS.trailLabelFontSizes;
+    const step     = Math.min(sizes.length - 1, Math.max(0, zoom - minZoom));
+    const fontSize = sizes[step];
+
+    const html = `<div class="trail-name-label" style="transform:rotate(${angle}deg);color:${color};font-size:${fontSize}px;">${title}</div>`;
+    const labelW = fontSize * title.length * 0.65;  // approximate width
     const marker = L.marker(latlng, {
-      icon: L.divIcon({ html, className: '', iconSize: [60, 12], iconAnchor: [30, 6] }),
+      icon: L.divIcon({ html, className: '', iconSize: [labelW, fontSize + 4], iconAnchor: [labelW/2, (fontSize+4)/2] }),
       interactive: false,
       zIndexOffset: -100,
     });
