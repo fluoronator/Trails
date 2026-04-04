@@ -370,7 +370,7 @@
     <div id="mode-badge" class="browsing">Browsing</div>
   </div>
 
-  <div id="version-badge">v62</div>
+  <div id="version-badge">v61</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -420,55 +420,6 @@
 
 <script>
 /* ═══════════════════════════════════════════════════════════════════
-   ████  SETTINGS  ████
-   All the values you're likely to want to tweak are here.
-   Everything else in this file should rarely need changing.
-════════════════════════════════════════════════════════════════════ */
-const SETTINGS = {
-
-  // ── MAP ZOOM LEVELS ──────────────────────────────────────────────
-  // Zoom when the app first opens on the park overview
-  browsingZoom:      18,
-  // Zoom used when following your location while hiking
-  hikingZoom:        18,
-
-  // ── HIKING MODE DETECTION ────────────────────────────────────────
-  // How close (metres) to the park centre before Hiking mode activates.
-  // Increase to a large number (e.g. 999999) to force Hiking mode
-  // while testing from your desk.
-  hikingRadius:      3200,
-
-  // ── POI MARKERS ─────────────────────────────────────────────────
-  // Zoom level below which POI icons disappear (avoids clutter)
-  poiIconMinZoom:    15,
-  // Zoom level below which POI label text disappears
-  poiLabelMinZoom:   17,
-  // Label font size (px) at each zoom level — [zoom17, zoom18, zoom19+]
-  poiLabelFontSizes: [13, 15, 17],
-  // How far the label text sits to the right of the icon [x, y] pixels
-  poiLabelOffset:    [8, -8],
-
-  // ── TRAIL LABELS ─────────────────────────────────────────────────
-  // Zoom level below which trail name labels disappear
-  trailLabelMinZoom: 15,
-
-  // ── MAP FOLLOWING BEHAVIOUR ──────────────────────────────────────
-  // Seconds of inactivity before map snaps back to your location
-  // after you've panned away in hiking mode
-  recenterDelaySec:  6,
-  // Minimum metres moved before the dot updates (filters GPS jitter)
-  minMoveDot:        0.5,
-  // Minimum metres moved before the map pans to follow you
-  minMoveFollow:     0.5,
-
-  // ── COMPASS ROTATION ─────────────────────────────────────────────
-  // Compass heading must change by more than this many degrees before
-  // the map rotates — filters sensor noise (higher = less jitter)
-  compassDeadZoneDeg: 1.5,
-};
-/* ══════════════════════════════════════════════════════════════════ */
-
-/* ═══════════════════════════════════════════════════════════════════
    PARK CONFIGURATION
    Add more parks here. geojsonUrl = relative path or full URL.
 ════════════════════════════════════════════════════════════════════ */
@@ -477,10 +428,12 @@ const PARKS = [
     id:            'trail-park-1',
     name:          'Trail Park',
     geojsonUrl:    'trails.geojson',
-    hikingRadius:  SETTINGS.hikingRadius,
-    defaultZoom:   SETTINGS.browsingZoom,
-    hikingZoom:    SETTINGS.hikingZoom,
-    defaultCenter: null,
+    // If user is within this many metres of the park centre → Hiking mode.
+    // Use a large number (e.g. 999999) to force Hiking mode while testing.
+    hikingRadius:  3200,
+    defaultZoom:   18,
+    hikingZoom:    18,    // zoom level when following user on foot
+    defaultCenter: null,           // null = auto-computed from GeoJSON bounds
   }
 ];
 
@@ -499,7 +452,8 @@ const TILE_DEFS = {
 /* ═══════════════════════════════════════════════════════════════════
    TIMING
 ════════════════════════════════════════════════════════════════════ */
-const RECENTER_DELAY_MS = SETTINGS.recenterDelaySec * 1000;
+const RECENTER_DELAY_MS = 6000;
+const ZOOM_RETURN_MS    = 5000;
 const TOAST_MS          = 2500;
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -589,7 +543,7 @@ function makePOIIcon(p) {
    One centred label per named trail, rotated to follow the line.
 ════════════════════════════════════════════════════════════════════ */
 let trailLabelLayer = null;
-const TRAIL_LABEL_MIN_ZOOM = SETTINGS.trailLabelMinZoom;
+const TRAIL_LABEL_MIN_ZOOM = 15;  // hide labels when zoomed out
 
 // Get the coordinate at the midpoint of a LineString coordinate array
 function lineMidpoint(coords) {
@@ -681,18 +635,17 @@ let lastGeojsonData = null;  // kept so trail labels can be rebuilt on zoom
 const poiLayers = [];   // all Point marker layers, for zoom-based label toggling
 
 // Labels visible at this zoom level and above
-const POI_LABEL_MIN_ZOOM = SETTINGS.poiLabelMinZoom;
-const POI_ICON_MIN_ZOOM  = SETTINGS.poiIconMinZoom;
+const POI_LABEL_MIN_ZOOM = 17;
+// Icons visible at this zoom level and above (a bit lower than labels)
+const POI_ICON_MIN_ZOOM  = 15;
 
 function updatePoiLabelVisibility() {
   const zoom      = map.getZoom();
   const showLabel = zoom >= POI_LABEL_MIN_ZOOM;
   const showIcon  = zoom >= POI_ICON_MIN_ZOOM;
 
-  // Font size steps from SETTINGS — index 0=zoom17, 1=zoom18, 2=zoom19+
-  const sizes    = SETTINGS.poiLabelFontSizes;
-  const step     = Math.min(2, Math.max(0, zoom - 17));
-  const fontSize = sizes[step];
+  // Scale font size with zoom: 13px at zoom 17, 15px at 18, 17px at 19+
+  const fontSize = Math.max(13, Math.min(17, 13 + (zoom - 17) * 2));
   const maxWidth = Math.max(80, Math.min(120, 80 + (zoom - 17) * 20));
 
   poiLayers.forEach(layer => {
@@ -750,7 +703,7 @@ function loadPark(park) {
               layer.bindTooltip(cleanTitle, {
                 permanent:  true,
                 direction:  'right',
-                offset:     SETTINGS.poiLabelOffset,
+                offset:     [8, -8],
                 className:  'poi-label',
               });
             }
@@ -959,8 +912,8 @@ map.on('zoomend', () => {
 ════════════════════════════════════════════════════════════════════ */
 
 // Minimum movement thresholds to filter GPS jitter
-const MIN_MOVE_METRES_DOT    = SETTINGS.minMoveDot;
-const MIN_MOVE_METRES_FOLLOW = SETTINGS.minMoveFollow;
+const MIN_MOVE_METRES_DOT    = 0.5;  // below this, don't move the dot
+const MIN_MOVE_METRES_FOLLOW = 0.5;  // below this, don't pan the map
 
 function startGeolocation() {
   if (!navigator.geolocation) {
@@ -1194,7 +1147,7 @@ function applyRotation(heading) {
 
 function smoothRotation() {
   const delta = targetHeading - currentHeading;
-  if (Math.abs(delta) < SETTINGS.compassDeadZoneDeg) {
+  if (Math.abs(delta) < 1.5) {   // dead zone: ignore sub-1.5° jitter
     currentHeading = targetHeading;
     applyRotation(currentHeading);
     smoothingActive = false;
