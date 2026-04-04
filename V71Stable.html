@@ -52,41 +52,51 @@
      * ahead. If we rotated around the screen centre, the dot would orbit
      * around a point above it, which looks wrong and disorienting.
      *
-     * SOLUTION: The wrapper is 100vw × 100vh but CSS-scaled up by a
-     * factor large enough to cover screen corners at any rotation.
-     * transform-origin is set to (50%, 75%) so rotation pivots around
-     * the dot position, not the screen centre.
+     * SOLUTION: Make the wrapper large enough that its own centre sits
+     * at the screen's 75% point. Then rotate around the wrapper's centre
+     * (transform-origin: 50% 50%), which is the same as rotating around
+     * screen position (50vw, 75vh) — exactly where the dot is.
      *
-     * SCALE FACTOR: Calculated in JS by computeWrapperScale() based on
-     * actual screen dimensions. Stored in WRAPPER_SCALE constant.
+     * WHY 400vmax?
+     * vmax = the larger of vw/vh. On a tall phone (e.g. iPhone Pro Max,
+     * ~19.5:9), the distance from pivot (50%, 75%) to the top corner is
+     * about 1.8× the screen width. 400vmax × 400vmax gives us 200vmax
+     * in every direction from the wrapper's centre, which is far more
+     * than any screen corner will ever be. Tiles outside the visible
+     * area are cached by Leaflet and never re-fetched — this large size
+     * has no performance cost after initial load.
      *
-     * PERFORMANCE: Because the wrapper is 100vw × 100vh before scaling,
-     * Leaflet thinks it's filling a normal screen-sized container and
-     * only loads the tiles needed for that area. The CSS scale just
-     * stretches those tiles visually — no extra tile requests.
-     * This is much faster than the 400vmax approach which caused Leaflet
-     * to load tiles for a massive area on every pan and zoom.
+     * DO NOT use CSS scale() on this element. Scale changes the apparent
+     * zoom level of the map tiles, making zoom level 18 look like zoom
+     * 20. The large fixed size achieves corner coverage without scaling.
      *
-     * VISUAL ZOOM CORRECTION: CSS scale() makes tiles appear larger
-     * (zoom 18 looks like zoom 20). We correct this by telling Leaflet
-     * to use a zoom offset via map options. See MAP INIT section.
+     * The wrapper is centred on (50vw, 75vh) using:
+     *   top: 75vh; left: 50vw; margin: -200vmax
+     * This keeps the wrapper's centre exactly at the dot's screen position.
+     *
+     * The UI overlay (#ui-overlay) is a SEPARATE element that is never
+     * rotated. All buttons, badges, and labels live there so they always
+     * stay upright regardless of map rotation.
      *
      * COORDINATE SPACES (important for panToUser and drag patch):
      * - Screen space: pixels relative to the device screen top-left
-     * - Container space: pixels relative to the wrapper top-left
-     * With scale(), these ARE the same before scaling — Leaflet's
-     * container coords match screen coords since the wrapper starts
-     * at (0,0). The pivot offset is handled via transform-origin.
+     * - Container space: pixels relative to the 400vmax wrapper top-left
+     * These are NOT the same. The wrapper's top-left in screen space is
+     * at (50vw - 200vmax, 75vh - 200vmax), which is off-screen to the
+     * top-left. When converting latlng ↔ pixels, Leaflet uses container
+     * space. See panToUser() for the conversion math.
      * ══════════════════════════════════════════════════════════════
      */
-
-    /* Scale factor computed in JS — CSS default is a safe fallback */
     #map-rotate-wrapper {
       position: fixed;
-      top: 0; left: 0;
-      width: 100vw; height: 100vh;
-      transform-origin: 50% 75%;  /* pivot at dot position (50vw, 75vh) */
-      transform: scale(1);         /* updated by JS on load and applyRotation() */
+      width: 400vmax;
+      height: 400vmax;
+      top: 75vh;
+      left: 50vw;
+      margin-top: -200vmax;
+      margin-left: -200vmax;
+      transform-origin: 50% 50%;  /* rotates around wrapper centre = screen (50vw, 75vh) */
+      transform: rotate(0deg);     /* updated by applyRotation() in compass section */
       will-change: transform;
       z-index: 1;
     }
@@ -547,10 +557,9 @@
   TWO-ELEMENT STRUCTURE — do not change this without understanding the rotation system.
 
   #map-rotate-wrapper: The ONLY thing that rotates. Contains just the Leaflet map div.
-    - Size: 100vw × 100vh (screen-sized so Leaflet loads only visible tiles)
-    - CSS scaled up by WRAPPER_SCALE so corners are covered during rotation
-    - transform-origin: 50% 75% — pivot at the user dot position
-    - Rotation: CSS transform applied by applyRotation() in JS
+    - Size: 400vmax × 400vmax (much larger than screen)
+    - Centre: positioned at screen (50vw, 75vh) — where the user dot appears
+    - Rotation: CSS transform: rotate() applied by applyRotation() in JS
 
   #ui-overlay: Never rotates. Contains all buttons, badges, labels, overlays.
     - Size: exactly 100vw × 100vh
@@ -593,7 +602,7 @@
     </div>
   </div>
 
-  <div id="version-badge">v72</div>
+  <div id="version-badge">v71</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -755,40 +764,6 @@ window.isHikingMode = false;
    MAP INIT
 ════════════════════════════════════════════════════════════════════ */
 const map = L.map('map', { zoomControl: false, attributionControl: true });
-
-/*
- * Compute the CSS scale factor needed to ensure the wrapper covers all
- * screen corners at any rotation angle, given pivot at (50%, 75%).
- * The limiting factor is the shortest distance from pivot to wrapper edge,
- * which must reach the furthest corner.
- * pivot = (W/2, 0.75H). Furthest corner = top-left or top-right.
- * Distance to top-left = sqrt((W/2)² + (0.75H)²)
- * Shortest edge distance from pivot = min(W/2, 0.75H, W/2, 0.25H) = 0.25H
- * Scale = (maxCornerDist / minEdgeDist) × 1.15 safety margin
- */
-function computeWrapperScale() {
-  const W = window.innerWidth;
-  const H = window.innerHeight;
-  const px = W * 0.5, py = H * 0.75;
-  const maxDist = Math.max(
-    Math.sqrt(px*px + py*py),
-    Math.sqrt((W-px)*(W-px) + py*py),
-    Math.sqrt(px*px + (H-py)*(H-py)),
-    Math.sqrt((W-px)*(W-px) + (H-py)*(H-py))
-  );
-  const minEdge = Math.min(px, W-px, py, H-py);
-  return (maxDist / minEdge) * 1.15;
-}
-
-const WRAPPER_SCALE = computeWrapperScale();
-
-// Apply scale immediately and on resize (e.g. device rotation)
-document.getElementById('map-rotate-wrapper').style.transform = `scale(${WRAPPER_SCALE})`;
-window.addEventListener('resize', () => {
-  const s = computeWrapperScale();
-  document.getElementById('map-rotate-wrapper').style.transform =
-    `scale(${s}) rotate(${((currentHeading||0) % 360 + 360) % 360 === 0 ? 0 : -(currentHeading||0)}deg)`;
-});
 
 let activeTileLayer = null;
 function setTileLayer(name) {
@@ -1137,31 +1112,59 @@ function setMode(mode) {
  * SOLUTION: Calculate what latlng needs to be at the map's centre
  * in order for our target latlng to appear at screen (50%, 75%).
  *
- * COORDINATE SPACE: The wrapper is 100vw × 100vh, so Leaflet's
- * container coords match screen coords directly. Simple delta math.
+ * COORDINATE SPACE COMPLICATION: The map container is 400vmax wide,
+ * not screen-width. map.latLngToContainerPoint() returns coords in
+ * this large container space. We must convert to screen space first.
+ *
+ * The container's top-left corner in screen coordinates is:
+ *   (50vw - 200vmax, 75vh - 200vmax)  — which is off-screen top-left
+ *
+ * Math:
+ * 1. Get latlng position in container space
+ * 2. Add container origin offset → screen space position
+ * 3. Find delta from desired screen position (50%, 75%)
+ * 4. Apply delta to container centre → find new centre in container space
+ * 5. Convert new centre back to latlng → pass to panTo
  *
  * PREVIOUS FAILED APPROACHES (do not retry these):
  * - panTo + panBy: panBy is intercepted by the rotation patch, causing
  *   the map to jump to wrong locations when rotated.
  * - map.project/unproject: uses global pixel coords, not container-
- *   relative, gives wrong results when map isn't centred on [0,0].
+ *   relative, gives wrong results when map isn't at [0,0].
  * - paddingBottomRight on panTo: panTo ignores padding options entirely.
- * - 400vmax container: Works geometrically but causes Leaflet to load
- *   tiles for the entire huge container on every pan — very slow.
  * ══════════════════════════════════════════════════════════════
  */
 function panToUser(latlng, animate) {
-  const W = window.innerWidth;
-  const H = window.innerHeight;
-  // Where the latlng currently appears on screen (container = screen here)
-  const targetPx  = map.latLngToContainerPoint(latlng);
-  // Where we want it: 75% down the screen
-  const desiredPx = L.point(W * 0.5, H * 0.75);
-  const delta     = targetPx.subtract(desiredPx);
-  // Shift the map centre by the same delta
-  const newCentre = map.containerPointToLatLng(
-    L.point(W * 0.5 + delta.x, H * 0.5 + delta.y)
+  // The map container is 400vmax × 400vmax, centred at screen (50vw, 75vh).
+  // latLngToContainerPoint returns coords in container space.
+  // We need to convert to screen space to find where the dot currently appears.
+  const vmax = Math.max(window.innerWidth, window.innerHeight);
+  const containerW = 4 * vmax;
+  const containerH = 4 * vmax;
+  // Container top-left in screen coordinates
+  const containerOriginX = window.innerWidth  * 0.5  - containerW * 0.5;
+  const containerOriginY = window.innerHeight * 0.75 - containerH * 0.5;
+
+  // Where the latlng currently appears in container space
+  const ptContainer = map.latLngToContainerPoint(latlng);
+  // Convert to screen space
+  const ptScreen = L.point(
+    ptContainer.x + containerOriginX,
+    ptContainer.y + containerOriginY
   );
+  // Where we want it on screen: 75% down, 50% across
+  const desiredScreen = L.point(
+    window.innerWidth  * 0.5,
+    window.innerHeight * 0.75
+  );
+  // Delta in screen space
+  const delta = ptScreen.subtract(desiredScreen);
+  // The new map centre in container space
+  const newCentreContainer = L.point(
+    containerW * 0.5 + delta.x,
+    containerH * 0.5 + delta.y
+  );
+  const newCentre = map.containerPointToLatLng(newCentreContainer);
   map.panTo(newCentre, { animate: animate !== false, duration: 0.5 });
 }
 
@@ -1403,8 +1406,8 @@ map.whenReady(function() {
 
   // Rotate a screen point around the map container centre by `deg` degrees
   function rotatePointAroundCenter(x, y, deg) {
-    // Pivot at screen (50%, 75%) — matches transform-origin: 50% 75%
-    // Container is 100vw×100vh so screen coords = container coords
+    // Pivot is at screen position (50vw, 75vh) — use window dimensions
+    // since the map container is now much larger than the screen
     const cx  = window.innerWidth  * 0.5;
     const cy  = window.innerHeight * 0.75;
     const rad = deg * Math.PI / 180;
@@ -1550,8 +1553,7 @@ function shortestDelta(from, to) {
 }
 
 function applyRotation(heading) {
-  const scale = computeWrapperScale();
-  mapWrapper.style.transform = `scale(${scale}) rotate(${-heading}deg)`;
+  mapWrapper.style.transform = `rotate(${-heading}deg)`;
   northArrow.style.transform = `rotate(${-heading}deg)`;
   window.mapRotationDeg = ((heading % 360) + 360) % 360;
 }
@@ -1754,19 +1756,27 @@ map.whenReady(function() {
   const origSetView = map.setView.bind(map);
   map.setView = function(center, zoom, options) {
     if (pinching && currentHeading && center) {
-      // Container is 100vw×100vh so container coords = screen coords
-      const W = window.innerWidth, H = window.innerHeight;
-      const pt = map.latLngToContainerPoint(L.latLng(center));
+      // center is a latlng — convert to container pixels, rotate, convert back
+      const vmax = Math.max(window.innerWidth, window.innerHeight);
+      const cw = 4 * vmax, ch = 4 * vmax;
+      const originX = window.innerWidth  * 0.5 - cw * 0.5;
+      const originY = window.innerHeight * 0.75 - ch * 0.5;
 
-      const cx  = W * 0.5;
-      const cy  = H * 0.75;
-      const rad = -currentHeading * Math.PI / 180;
+      const pt = map.latLngToContainerPoint(L.latLng(center));
+      const sx = pt.x + originX;
+      const sy = pt.y + originY;
+
+      const cx  = window.innerWidth  * 0.5;
+      const cy  = window.innerHeight * 0.75;
+      const rad = -currentHeading * Math.PI / 180; // inverse rotation
       const cos = Math.cos(rad), sin = Math.sin(rad);
-      const dx = pt.x - cx, dy = pt.y - cy;
+      const dx = sx - cx, dy = sy - cy;
       const rx = cx + dx * cos - dy * sin;
       const ry = cy + dx * sin + dy * cos;
 
-      const rotated = map.containerPointToLatLng(L.point(rx, ry));
+      const rotated = map.containerPointToLatLng(
+        L.point(rx - originX, ry - originY)
+      );
       return origSetView(rotated, zoom, options);
     }
     return origSetView(center, zoom, options);
