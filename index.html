@@ -543,47 +543,18 @@
     </div>
   </div>
 
-  <div id="version-badge">v89</div>
+  <div id="version-badge">v90</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
 
   <!-- North arrow: counter-rotates to always point true north -->
   <div id="north-arrow">
-    <svg viewBox="0 0 44 44" width="44" height="44" xmlns="http://www.w3.org/2000/svg">
-      <!-- Outer degree ring -->
-      <circle cx="22" cy="22" r="20" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="0.75"/>
-      <!-- Tick marks at 45° intervals -->
-      <g stroke="rgba(255,255,255,0.3)" stroke-width="0.75">
-        <line x1="22" y1="3"  x2="22" y2="6"/>   <!-- N -->
-        <line x1="22" y1="38" x2="22" y2="41"/>  <!-- S -->
-        <line x1="3"  y1="22" x2="6"  y2="22"/>  <!-- W -->
-        <line x1="38" y1="22" x2="41" y2="22"/>  <!-- E -->
-        <!-- Diagonal ticks -->
-        <line x1="7.5"  y1="7.5"  x2="9.6"  y2="9.6"/>
-        <line x1="36.5" y1="7.5"  x2="34.4" y2="9.6"/>
-        <line x1="7.5"  y1="36.5" x2="9.6"  y2="34.4"/>
-        <line x1="36.5" y1="36.5" x2="34.4" y2="34.4"/>
-      </g>
-      <!-- Cardinal letters -->
-      <text x="22" y="11.5" text-anchor="middle" fill="#e74c3c"
-            font-size="5.5" font-family="Arial,sans-serif" font-weight="800"
-            letter-spacing="0">N</text>
-      <text x="22" y="37"   text-anchor="middle" fill="rgba(255,255,255,0.55)"
-            font-size="4.5" font-family="Arial,sans-serif" font-weight="700">S</text>
-      <text x="8.5"  y="23.5" text-anchor="middle" fill="rgba(255,255,255,0.55)"
-            font-size="4.5" font-family="Arial,sans-serif" font-weight="700">W</text>
-      <text x="35.5" y="23.5" text-anchor="middle" fill="rgba(255,255,255,0.55)"
-            font-size="4.5" font-family="Arial,sans-serif" font-weight="700">E</text>
-      <!-- North needle (red) -->
-      <polygon points="22,6 24.5,22 22,19.5 19.5,22"
-               fill="#e74c3c" opacity="0.95"/>
-      <!-- South needle (white/grey) -->
-      <polygon points="22,38 24.5,22 22,24.5 19.5,22"
-               fill="rgba(200,200,200,0.75)"/>
-      <!-- Centre dot -->
-      <circle cx="22" cy="22" r="2" fill="rgba(255,255,255,0.9)"/>
-      <circle cx="22" cy="22" r="1" fill="#e74c3c"/>
+    <svg viewBox="0 0 40 40" width="36" height="36">
+      <polygon points="20,4 26,20 20,17 14,20" fill="#e74c3c"/>
+      <polygon points="20,36 26,20 20,23 14,20" fill="#888"/>
+      <text x="20" y="12" text-anchor="middle" fill="white"
+            font-size="7" font-family="sans-serif" font-weight="700">N</text>
     </svg>
   </div>
 
@@ -1489,12 +1460,14 @@ function handleOrientation(e) {
   }
 
   if (!window.isHikingMode) {
-    // Browsing mode — update the needle only, keep map north-up
-    northArrow.style.transform = `rotate(${-raw}deg)`;
+    // Browsing mode — update the needle only, keep map north-up.
+    // Use the same unbounded heading accumulation as hiking mode to
+    // prevent the needle spinning the long way around when passing north.
+    targetHeading += shortestDelta(targetHeading, raw);
+    currentHeading = targetHeading;
+    northArrow.style.transform = `rotate(${-currentHeading}deg)`;
     // Reset map rotation if we were previously in hiking mode
-    if (currentHeading !== 0 || targetHeading !== 0) {
-      currentHeading = 0;
-      targetHeading  = 0;
+    if (mapWrapper.style.transform !== 'rotate(0deg)') {
       mapWrapper.style.transform = 'rotate(0deg)';
     }
     return;
