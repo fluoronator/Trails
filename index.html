@@ -543,7 +543,7 @@
     </div>
   </div>
 
-  <div id="version-badge">v84</div>
+  <div id="version-badge">v85</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -1229,11 +1229,11 @@ function startGeolocation() {
       }
 
       const acc = pos.coords.accuracy ? `± ${Math.round(pos.coords.accuracy)}m` : '';
-      showToast(`📍 Located ${acc}`);
+      showToast(`Located ${acc}`);
     },
     err => {
       console.warn('GPS error:', err.message);
-      showToast('📍 Location unavailable — Browsing mode');
+      showToast('Location unavailable — Browsing mode');
       setMode('browsing');
     },
     { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
