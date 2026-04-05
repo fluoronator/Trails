@@ -513,7 +513,12 @@
   <div id="top-bar">
     <div id="park-name">🥾 Trail Navigator</div>
     <div id="mode-badge" class="browsing">Browsing</div>
-    <button id="feedback-btn" title="Send feedback">💬</button>
+    <button id="feedback-btn" title="Send feedback">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none"
+           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
+    </button>
   </div>
 
   <!-- Feedback overlay -->
@@ -538,7 +543,7 @@
     </div>
   </div>
 
-  <div id="version-badge">v82</div>
+  <div id="version-badge">v83</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -1429,11 +1434,27 @@ function handleOrientation(e) {
   // Get raw heading regardless of mode
   let raw;
   if (typeof e.webkitCompassHeading === 'number' && e.webkitCompassHeading >= 0) {
+    // iOS — webkitCompassHeading is always true north, portrait-corrected by the OS
     raw = e.webkitCompassHeading;
-  } else if (e.absolute && e.alpha != null) {
-    raw = (360 - e.alpha) % 360;
   } else if (e.alpha != null) {
+    // Android / Chromium (including Tesla) — alpha is CCW from north, convert to CW
     raw = (360 - e.alpha) % 360;
+
+    // Correct for screen orientation. On a landscape device (Tesla screen is always
+    // landscape) the axes are rotated 90° relative to portrait. We detect this using
+    // screen.orientation if available, falling back to comparing width vs height.
+    // We do NOT apply this correction on iOS (webkitCompassHeading path above handles it).
+    let screenAngle = 0;
+    if (screen.orientation && screen.orientation.angle !== undefined) {
+      screenAngle = screen.orientation.angle;
+    } else if (typeof window.orientation === 'number') {
+      screenAngle = window.orientation;
+    } else if (window.innerWidth > window.innerHeight) {
+      // No orientation API — infer landscape from dimensions
+      screenAngle = 90;
+    }
+    // Adjust heading for screen rotation
+    raw = ((raw - screenAngle) + 360) % 360;
   } else {
     return;
   }
