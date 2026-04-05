@@ -256,7 +256,7 @@
     #feedback-overlay {
       position: absolute;
       inset: 0;
-      background: rgba(0,0,0,0.5);
+      background: rgba(0,0,0,0.6);
       backdrop-filter: blur(4px);
       -webkit-backdrop-filter: blur(4px);
       z-index: 2500;
@@ -271,13 +271,13 @@
     #feedback-overlay.hidden { display: none; }
 
     #feedback-panel {
-      background: #ffffff;
-      border: 1px solid #cccccc;
+      background: var(--surface);
+      border: 1px solid var(--border);
       border-radius: 16px;
       width: 100%;
       max-width: 380px;
       padding: 20px;
-      box-shadow: 0 16px 48px rgba(0,0,0,0.4);
+      box-shadow: 0 16px 48px rgba(0,0,0,0.6);
     }
 
     #feedback-header {
@@ -289,19 +289,19 @@
     #feedback-title {
       font-size: 17px;
       font-weight: 700;
-      color: #111111;
+      color: var(--text);
     }
     #feedback-close {
       background: none;
       border: none;
-      color: #555555;
+      color: var(--muted);
       font-size: 18px;
       cursor: pointer;
       padding: 4px 8px;
       border-radius: 6px;
       line-height: 1;
     }
-    #feedback-close:active { background: #eeeeee; }
+    #feedback-close:active { background: var(--border); }
 
     #feedback-form {
       display: flex;
@@ -309,40 +309,40 @@
       gap: 12px;
     }
     #feedback-message {
-      background: #f5f5f5;
-      border: 1.5px solid #cccccc;
+      background: var(--bg);
+      border: 1px solid var(--border);
       border-radius: 10px;
-      color: #111111;
-      font-size: 15px;
+      color: var(--text);
+      font-size: 14px;
       font-family: inherit;
       padding: 10px 12px;
       resize: none;
       height: 120px;
       outline: none;
     }
-    #feedback-message:focus { border-color: #1a7abf; }
+    #feedback-message:focus { border-color: var(--blue); }
     #feedback-contact {
-      background: #f5f5f5;
-      border: 1.5px solid #cccccc;
+      background: var(--bg);
+      border: 1px solid var(--border);
       border-radius: 10px;
-      color: #111111;
-      font-size: 14px;
+      color: var(--text);
+      font-size: 13px;
       font-family: inherit;
       padding: 10px 12px;
       outline: none;
     }
-    #feedback-contact:focus { border-color: #1a7abf; }
+    #feedback-contact:focus { border-color: var(--blue); }
     #feedback-contact::placeholder,
-    #feedback-message::placeholder { color: #888888; }
+    #feedback-message::placeholder { color: var(--muted); }
 
     #feedback-submit {
-      background: #1a7abf;
-      color: #ffffff;
+      background: var(--blue);
+      color: #000;
       border: none;
       border-radius: 10px;
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 700;
-      padding: 13px;
+      padding: 12px;
       cursor: pointer;
       transition: opacity 0.2s;
     }
@@ -359,13 +359,13 @@
     #feedback-thankyou.hidden { display: none; }
     #feedback-thanks-icon {
       font-size: 40px;
-      color: #1a7abf;
+      color: var(--green);
       margin-bottom: 10px;
     }
     #feedback-thanks-text {
       font-size: 16px;
       font-weight: 600;
-      color: #111111;
+      color: var(--text);
     }
 
     /* ── IOS COMPASS TAP OVERLAY ── */
@@ -543,7 +543,7 @@
     </div>
   </div>
 
-  <div id="version-badge">v88</div>
+  <div id="version-badge">v87</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -612,7 +612,7 @@ const SETTINGS = {
   // How close (metres) to the park centre before Hiking mode activates.
   // Increase to a large number (e.g. 999999) to force Hiking mode
   // while testing from your desk.
-  hikingRadius:      3200,
+  hikingRadius:      90000,
 
   // ── POI MARKERS ─────────────────────────────────────────────────
   // Zoom level below which POI icons disappear (avoids clutter)
