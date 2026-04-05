@@ -507,6 +507,24 @@
     .poi-label::before { display: none !important; }
     .poi-label-hidden  { display: none !important; }
 
+    /* ── MAP TEXT LABEL (class=Label in GeoJSON) ── */
+    .map-label {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      color: #000 !important;
+      font-weight: 700 !important;
+      line-height: 1.2 !important;
+      padding: 0 !important;
+      max-width: 120px !important;
+      white-space: normal !important;
+      word-wrap: break-word !important;
+      text-align: center !important;
+      text-shadow: 0 0 4px #fff, 0 0 4px #fff, 0 0 4px #fff,
+                   1px 1px 0 #fff, -1px -1px 0 #fff !important;
+    }
+    .map-label::before { display: none !important; }
+
   </style>
 </head>
 <body>
@@ -552,7 +570,7 @@
     </div>
   </div>
 
-  <div id="version-badge">v92</div>
+  <div id="version-badge">v94</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -632,6 +650,9 @@ const SETTINGS = {
   poiLabelFontSizes: [13, 15, 17],
   // How far the label text sits to the right of the icon [x, y] pixels
   poiLabelOffset:    [8, -8],
+  // Map text label font size (px) — [zoom17, zoom18, zoom19+]
+  // Slightly larger than POI labels since there's no icon to anchor them
+  mapLabelFontSizes: [15, 17, 19],
 
   // ── TRAIL LABELS ─────────────────────────────────────────────────
   // Zoom level below which trail name labels disappear
@@ -921,24 +942,32 @@ function updatePoiLabelVisibility() {
   const showLabel = zoom >= POI_LABEL_MIN_ZOOM;
   const showIcon  = zoom >= POI_ICON_MIN_ZOOM;
 
-  // Font size steps from SETTINGS — index 0=zoom17, 1=zoom18, 2=zoom19+
-  const sizes    = SETTINGS.poiLabelFontSizes;
-  const step     = Math.min(2, Math.max(0, zoom - 17));
-  const fontSize = sizes[step];
-  const maxWidth = Math.max(80, Math.min(120, 80 + (zoom - 17) * 20));
+  // Font size steps from SETTINGS
+  const sizes      = SETTINGS.poiLabelFontSizes;
+  const labelSizes = SETTINGS.mapLabelFontSizes;
+  const step       = Math.min(2, Math.max(0, zoom - 17));
+  const fontSize   = sizes[step];
+  const labelSize  = labelSizes[step];
+  const maxWidth   = Math.max(80, Math.min(120, 80 + (zoom - 17) * 20));
 
   poiLayers.forEach(layer => {
-    // Toggle and scale label
     const tt = layer.getTooltip();
     if (tt) {
       const el = tt.getElement();
       if (el) {
-        el.classList.toggle('poi-label-hidden', !showLabel);
-        el.style.fontSize = fontSize + 'px';
-        el.style.maxWidth = maxWidth + 'px';
+        const isLabel = el.classList.contains('map-label');
+        if (isLabel) {
+          // Text labels — zoom-scaled, hide below poiIconMinZoom
+          el.classList.toggle('poi-label-hidden', !showIcon);
+          el.style.fontSize = labelSize + 'px';
+        } else {
+          el.classList.toggle('poi-label-hidden', !showLabel);
+          el.style.fontSize = fontSize + 'px';
+          el.style.maxWidth = maxWidth + 'px';
+        }
       }
     }
-    // Toggle icon
+    // Toggle icon — labels have invisible icon so this is harmless
     if (layer._icon) {
       layer._icon.style.display = showIcon ? '' : 'none';
     }
@@ -966,7 +995,13 @@ function loadPark(park) {
           return {};
         },
         pointToLayer: (f, ll) => {
-          const marker = L.marker(ll, { icon: makePOIIcon(f.properties || {}) });
+          const p = f.properties || {};
+          const isLabel = (p.class || p['marker-symbol'] || '').toLowerCase() === 'label';
+          const icon = isLabel
+            // Invisible 1px icon — only the tooltip text is shown
+            ? L.divIcon({ html: '', className: '', iconSize: [1,1], iconAnchor: [0,0] })
+            : makePOIIcon(p);
+          const marker = L.marker(ll, { icon, interactive: !isLabel });
           poiLayers.push(marker);
           return marker;
         },
@@ -975,19 +1010,30 @@ function loadPark(park) {
           const title = (p.title || '').trim();
           const isTS  = /^\d{1,2}:\d{2}:\d{2}/.test(title);
           const cleanTitle = isTS ? '' : title;
+          const isLabel = (p.class || p['marker-symbol'] || '').toLowerCase() === 'label';
 
           if (t === 'Point') {
-            // Permanent label beside the pin — no popup
             if (cleanTitle) {
-              layer.bindTooltip(cleanTitle, {
-                permanent:  true,
-                direction:  'right',
-                offset:     SETTINGS.poiLabelOffset,
-                className:  'poi-label',
-              });
+              if (isLabel) {
+                // Text-only label — centred on the coordinate, no icon offset
+                layer.bindTooltip(cleanTitle, {
+                  permanent:  true,
+                  direction:  'center',
+                  offset:     [0, 0],
+                  className:  'map-label',
+                });
+              } else {
+                // Normal POI — label beside the pin
+                layer.bindTooltip(cleanTitle, {
+                  permanent:  true,
+                  direction:  'right',
+                  offset:     SETTINGS.poiLabelOffset,
+                  className:  'poi-label',
+                });
+              }
             }
           } else if (t === 'LineString' || t === 'MultiLineString') {
-            // No tooltip — trail names are shown as rotated labels via buildTrailLabels()
+            // Trail names shown via buildTrailLabels()
           }
         },
       }).addTo(map);
