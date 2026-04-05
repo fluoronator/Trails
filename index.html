@@ -39,14 +39,14 @@
       /* Size the container large enough that its corners always cover
          the screen at any rotation angle, for any phone aspect ratio.
          We centre it on the 75% pivot point using negative margins.
-         400vmax is generous enough for any current or future device —
+         200vmax is generous enough for any current or future device —
          tiles outside the visible area are cached and never re-fetched. */
-      width: 400vmax;
-      height: 400vmax;
+      width: 200vmax;
+      height: 200vmax;
       top: 75vh;
       left: 50vw;
-      margin-top: -200vmax;
-      margin-left: -200vmax;
+      margin-top: -100vmax;
+      margin-left: -100vmax;
       transform-origin: 50% 50%;
       transform: rotate(0deg);
       will-change: transform;
@@ -538,7 +538,7 @@
     </div>
   </div>
 
-  <div id="version-badge">v81</div>
+  <div id="version-badge">v82</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -1067,12 +1067,12 @@ function setMode(mode) {
    using a plain panTo. No secondary panBy, no padding options.
 ════════════════════════════════════════════════════════════════════ */
 function panToUser(latlng, animate) {
-  // The map container is 400vmax × 400vmax, centred at screen (50vw, 75vh).
+  // The map container is 200vmax × 200vmax, centred at screen (50vw, 75vh).
   // latLngToContainerPoint returns coords in container space.
   // We need to convert to screen space to find where the dot currently appears.
   const vmax = Math.max(window.innerWidth, window.innerHeight);
-  const containerW = 4 * vmax;
-  const containerH = 4 * vmax;
+  const containerW = 2 * vmax;
+  const containerH = 2 * vmax;
   // Container top-left in screen coordinates
   const containerOriginX = window.innerWidth  * 0.5  - containerW * 0.5;
   const containerOriginY = window.innerHeight * 0.75 - containerH * 0.5;
@@ -1597,7 +1597,7 @@ map.whenReady(function() {
     if (pinching && currentHeading && center) {
       // center is a latlng — convert to container pixels, rotate, convert back
       const vmax = Math.max(window.innerWidth, window.innerHeight);
-      const cw = 4 * vmax, ch = 4 * vmax;
+      const cw = 2 * vmax, ch = 2 * vmax;
       const originX = window.innerWidth  * 0.5 - cw * 0.5;
       const originY = window.innerHeight * 0.75 - ch * 0.5;
 
