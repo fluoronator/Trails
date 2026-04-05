@@ -543,7 +543,7 @@
     </div>
   </div>
 
-  <div id="version-badge">v85</div>
+  <div id="version-badge">v86</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -1523,29 +1523,47 @@ function startOrientationListening() {
   }
 }
 
-// iOS: check if permission is already granted before showing overlay
+// iOS: check permission state first using the Permissions API.
+// CRITICAL: Never call DeviceOrientationEvent.requestPermission() speculatively
+// on page load — iOS always shows a system dialog when called outside a user
+// gesture, even if permission was already granted. This was causing a prompt
+// on every page load.
+//
+// Strategy:
+// 1. Use navigator.permissions.query() to check current state silently
+// 2. If 'granted' — start listening immediately, no dialog needed
+// 3. If 'denied' — don't bother the user, compass just won't work
+// 4. If 'prompt' or Permissions API unavailable — show our tap overlay
+//    so the user gesture satisfies iOS's requirement
+
 if (typeof DeviceOrientationEvent !== 'undefined' &&
     typeof DeviceOrientationEvent.requestPermission === 'function') {
-  // Try requesting silently — if already granted it resolves immediately
-  // without showing any system dialog
-  DeviceOrientationEvent.requestPermission()
-    .then(response => {
-      if (response === 'granted') {
-        // Already have permission — start listening immediately, no overlay
-        window.addEventListener('deviceorientation', handleOrientation, true);
-        orientationPermissionGranted = true;
-      } else {
-        // Not yet granted — show the tap overlay to get a user gesture
+  // iOS 13+ path
+  if (navigator.permissions && navigator.permissions.query) {
+    navigator.permissions.query({ name: 'gyroscope' })
+      .then(result => {
+        if (result.state === 'granted') {
+          // Already granted — start immediately with no dialog
+          window.addEventListener('deviceorientation', handleOrientation, true);
+          orientationPermissionGranted = true;
+        } else if (result.state === 'denied') {
+          // User previously denied — don't ask again
+          console.log('Compass permission denied — rotation unavailable');
+        } else {
+          // 'prompt' — need a user gesture, show tap overlay
+          showTapOverlay();
+        }
+      })
+      .catch(() => {
+        // Permissions API not supported for this sensor — show tap overlay
         showTapOverlay();
-      }
-    })
-    .catch(() => {
-      // requestPermission called outside user gesture returns a rejection
-      // when permission hasn't been granted yet — show overlay
-      showTapOverlay();
-    });
+      });
+  } else {
+    // No Permissions API — show tap overlay to get user gesture
+    showTapOverlay();
+  }
 } else {
-  // Android / desktop — start immediately
+  // Android / desktop — start immediately, no permission needed
   startOrientationListening();
 }
 
