@@ -387,28 +387,21 @@
     /* ── IOS COMPASS TAP OVERLAY ── */
     #tap-overlay {
       position: absolute;
-      bottom: 80px;
-      left: 50%;
-      transform: translateX(-50%);
+      inset: 0;
+      background: rgba(13,17,23,0.85);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
       z-index: 3000;
       cursor: pointer;
     }
     #tap-overlay.hidden { display: none; }
-    #tap-overlay-inner {
-      background: rgba(13,17,23,0.92);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      border: 1px solid rgba(63,185,80,0.5);
-      border-radius: 24px;
-      padding: 10px 20px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      white-space: nowrap;
-    }
-    #tap-overlay-icon  { font-size: 18px; }
-    #tap-overlay-title { font-size: 13px; font-weight: 700; color: var(--green); }
-    #tap-overlay-sub   { display: none; }
+    #tap-overlay-inner { text-align: center; padding: 32px; }
+    #tap-overlay-icon  { font-size: 56px; margin-bottom: 16px; }
+    #tap-overlay-title { font-size: 22px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+    #tap-overlay-sub   { font-size: 14px; color: var(--muted); }
 
     /* ── ZOOM BADGE ── */
     #zoom-badge {
@@ -584,7 +577,7 @@
     </div>
   </div>
 
-  <div id="version-badge">v105-test</div>
+  <div id="version-badge">v107-test</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -615,11 +608,12 @@
     </button>
   </div>
 
-  <!-- iOS compass permission button — appears above bottom bar -->
+  <!-- iOS compass permission overlay — shown on first load, dismissed on tap -->
   <div id="tap-overlay" class="hidden">
     <div id="tap-overlay-inner">
       <div id="tap-overlay-icon">🧭</div>
-      <div id="tap-overlay-title">Enable Compass</div>
+      <div id="tap-overlay-title">Tap to Enable Compass</div>
+      <div id="tap-overlay-sub">Tap Allow on the next prompt to enable map rotation</div>
     </div>
   </div>
 
@@ -1616,12 +1610,10 @@ function startOrientationListening() {
 }
 
 // Compass permission:
-// Safari REQUIRES requestPermission() called inside a user gesture every
-// session to fire orientation events — there is no way around this.
-// We cannot skip it even if previously granted.
-// Strategy: always show the tap overlay in Safari. It's a one-tap
-// interaction before the compass activates.
-// Chrome/GSA: requestPermission() resolves without gesture, works silently.
+// Safari ALWAYS rejects requestPermission() outside a user gesture, so
+// the tap overlay is unavoidable in Safari — one tap per session.
+// Chrome/GSA resolve the silent call immediately without any dialog,
+// so we save to localStorage and skip the overlay on return visits.
 // Android/desktop: no requestPermission needed.
 
 const ua = navigator.userAgent;
@@ -1632,23 +1624,29 @@ const compassPreviouslyGranted = (() => {
 
 if (typeof DeviceOrientationEvent !== 'undefined' &&
     typeof DeviceOrientationEvent.requestPermission === 'function') {
-  // Try silent call first — Chrome/GSA resolve without gesture.
-  // Safari will reject (outside gesture) → show tap overlay.
-  DeviceOrientationEvent.requestPermission()
-    .then(response => {
-      if (response === 'granted') {
-        // Chrome/GSA granted silently
-        window.addEventListener('deviceorientation', handleOrientation, true);
-        orientationPermissionGranted = true;
-        try { localStorage.setItem('compassPermission', 'granted'); } catch(e) {}
-      } else {
+  if (compassPreviouslyGranted) {
+    // Chrome/GSA previously granted — skip overlay, start directly
+    window.addEventListener('deviceorientation', handleOrientation, true);
+    orientationPermissionGranted = true;
+  } else {
+    // Try silent call:
+    // - Chrome/GSA: resolves 'granted' immediately → save to localStorage
+    // - Safari: rejects (outside gesture) → show tap overlay
+    DeviceOrientationEvent.requestPermission()
+      .then(response => {
+        if (response === 'granted') {
+          window.addEventListener('deviceorientation', handleOrientation, true);
+          orientationPermissionGranted = true;
+          try { localStorage.setItem('compassPermission', 'granted'); } catch(e) {}
+        } else {
+          showTapOverlay();
+        }
+      })
+      .catch(() => {
+        // Safari rejects outside gesture — show tap overlay
         showTapOverlay();
-      }
-    })
-    .catch(() => {
-      // Safari rejects outside gesture — must use tap overlay
-      showTapOverlay();
-    });
+      });
+  }
 } else {
   // Android / desktop — start immediately
   startOrientationListening();
