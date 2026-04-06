@@ -577,7 +577,7 @@
     </div>
   </div>
 
-  <div id="version-badge">v99-debug3</div>
+  <div id="version-badge">v99-debug4</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -1606,7 +1606,8 @@ function startOrientationListening() {
 //   orientation events fire without it. Treat Chrome on iOS like Android.
 // - Android/desktop: no permission needed, start immediately.
 
-const isChrome = /CriOS/.test(navigator.userAgent);
+const ua = navigator.userAgent;
+const isChrome = /CriOS|Chrome/.test(ua);
 const needsPermission = typeof DeviceOrientationEvent !== 'undefined' &&
     typeof DeviceOrientationEvent.requestPermission === 'function' &&
     !isChrome;
@@ -1616,7 +1617,7 @@ function dbgBadge(msg) {
   const el = document.getElementById('version-badge');
   if (el) el.textContent = msg;
 }
-dbgBadge(navigator.userAgent.slice(0,80));
+dbgBadge(ua.slice(60,160));
 
 if (needsPermission) {
   // Safari iOS path
