@@ -3,8 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <!-- Full-screen mode — re-enable when done testing:
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  -->
   <title>Trail Navigator</title>
 
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
@@ -575,7 +577,7 @@
     </div>
   </div>
 
-  <div id="version-badge">v103</div>
+  <div id="version-badge">v104-test</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -1608,11 +1610,12 @@ function startOrientationListening() {
 }
 
 // Compass permission:
-// Safari requires requestPermission() to be called every load to activate
-// the sensor — even if previously granted, the silent call is needed.
-// localStorage remembers the grant so we can skip showing the tap overlay
-// on return visits (the silent call resolves to 'granted' with no dialog).
-// GSA/other WebKit browsers: same path, localStorage also helps them.
+// Safari requires requestPermission() on first visit (inside a user gesture).
+// On return visits, if iOS permission is already granted, we can start
+// listening directly WITHOUT calling requestPermission() — Safari will
+// fire events as long as the iOS-level permission is still active.
+// localStorage tracks whether we've ever been granted.
+// GSA/Chrome: same path works for them too.
 // Android/desktop: no requestPermission → start directly.
 
 const ua = navigator.userAgent;
@@ -1623,27 +1626,29 @@ const compassPreviouslyGranted = (() => {
 
 if (typeof DeviceOrientationEvent !== 'undefined' &&
     typeof DeviceOrientationEvent.requestPermission === 'function') {
-  // Always call silently — resolves without dialog if already granted
-  DeviceOrientationEvent.requestPermission()
-    .then(response => {
-      if (response === 'granted') {
-        window.addEventListener('deviceorientation', handleOrientation, true);
-        orientationPermissionGranted = true;
-        try { localStorage.setItem('compassPermission', 'granted'); } catch(e) {}
-      } else {
-        // Denied — nothing to do
-        showToast('Compass permission denied');
-      }
-    })
-    .catch(() => {
-      // Rejected — called outside gesture and not yet granted
-      if (compassPreviouslyGranted) {
-        // Shouldn't happen if previously granted, but try overlay as fallback
+  if (compassPreviouslyGranted) {
+    // Previously granted — start listening directly, no requestPermission needed.
+    // Safari fires events as long as the iOS permission is still active.
+    window.addEventListener('deviceorientation', handleOrientation, true);
+    orientationPermissionGranted = true;
+  } else {
+    // First visit — try silent call. Safari will reject (outside gesture)
+    // and we show tap overlay. Chrome/GSA may resolve immediately.
+    DeviceOrientationEvent.requestPermission()
+      .then(response => {
+        if (response === 'granted') {
+          window.addEventListener('deviceorientation', handleOrientation, true);
+          orientationPermissionGranted = true;
+          try { localStorage.setItem('compassPermission', 'granted'); } catch(e) {}
+        } else {
+          showTapOverlay();
+        }
+      })
+      .catch(() => {
+        // Safari rejects outside gesture — show tap overlay
         showTapOverlay();
-      } else {
-        showTapOverlay();
-      }
-    });
+      });
+  }
 } else {
   // Android / desktop — start immediately
   startOrientationListening();
