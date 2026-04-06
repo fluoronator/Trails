@@ -575,7 +575,7 @@
     </div>
   </div>
 
-  <div id="version-badge">v102</div>
+  <div id="version-badge">v103</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -1608,41 +1608,42 @@ function startOrientationListening() {
 }
 
 // Compass permission:
-// Try requestPermission() silently on load.
-// - If already granted (localStorage cache): start immediately, no prompt.
-// - If resolves 'granted': save to localStorage, start listening.
-// - If rejects (outside gesture, not yet granted): show tap overlay.
-// - Android/desktop: no requestPermission → start directly.
+// Safari requires requestPermission() to be called every load to activate
+// the sensor — even if previously granted, the silent call is needed.
+// localStorage remembers the grant so we can skip showing the tap overlay
+// on return visits (the silent call resolves to 'granted' with no dialog).
+// GSA/other WebKit browsers: same path, localStorage also helps them.
+// Android/desktop: no requestPermission → start directly.
 
 const ua = navigator.userAgent;
+const compassPreviouslyGranted = (() => {
+  try { return localStorage.getItem('compassPermission') === 'granted'; }
+  catch(e) { return false; }
+})();
 
 if (typeof DeviceOrientationEvent !== 'undefined' &&
     typeof DeviceOrientationEvent.requestPermission === 'function') {
-  // Check localStorage first to avoid any prompt on return visits
-  try {
-    if (localStorage.getItem('compassPermission') === 'granted') {
-      window.addEventListener('deviceorientation', handleOrientation, true);
-      orientationPermissionGranted = true;
-    } else {
-      throw new Error('not cached');
-    }
-  } catch(e) {
-    // Not cached or localStorage unavailable — try silent requestPermission
-    DeviceOrientationEvent.requestPermission()
-      .then(response => {
-        if (response === 'granted') {
-          window.addEventListener('deviceorientation', handleOrientation, true);
-          orientationPermissionGranted = true;
-          try { localStorage.setItem('compassPermission', 'granted'); } catch(e2) {}
-        } else {
-          showTapOverlay();
-        }
-      })
-      .catch(() => {
-        // Rejected outside gesture — show tap overlay for user gesture
+  // Always call silently — resolves without dialog if already granted
+  DeviceOrientationEvent.requestPermission()
+    .then(response => {
+      if (response === 'granted') {
+        window.addEventListener('deviceorientation', handleOrientation, true);
+        orientationPermissionGranted = true;
+        try { localStorage.setItem('compassPermission', 'granted'); } catch(e) {}
+      } else {
+        // Denied — nothing to do
+        showToast('Compass permission denied');
+      }
+    })
+    .catch(() => {
+      // Rejected — called outside gesture and not yet granted
+      if (compassPreviouslyGranted) {
+        // Shouldn't happen if previously granted, but try overlay as fallback
         showTapOverlay();
-      });
-  }
+      } else {
+        showTapOverlay();
+      }
+    });
 } else {
   // Android / desktop — start immediately
   startOrientationListening();
