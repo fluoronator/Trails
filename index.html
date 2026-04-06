@@ -577,7 +577,7 @@
     </div>
   </div>
 
-  <div id="version-badge">v97-test</div>
+  <div id="version-badge">v98-test</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -1595,27 +1595,32 @@ function startOrientationListening() {
   }
 }
 
-// iOS/Chrome compass permission strategy:
-// - localStorage remembers if permission was previously granted (avoids
-//   any prompt on return visits once granted).
-// - On first visit, try requestPermission() silently first. Chrome resolves
-//   this without a dialog. Safari rejects it (called outside gesture) so
-//   we catch the rejection and show our tap overlay instead.
-// - requestPermission() is ONLY called inside a user gesture on Safari.
+// Compass permission strategy:
+// - Safari on iOS 13+ requires DeviceOrientationEvent.requestPermission()
+//   called inside a user gesture. We use localStorage to remember the grant
+//   so we only need to ask once ever.
+// - Chrome on iOS also has requestPermission but does NOT need it —
+//   orientation events fire without it. Treat Chrome on iOS like Android.
+// - Android/desktop: no permission needed, start immediately.
 
-if (typeof DeviceOrientationEvent !== 'undefined' &&
-    typeof DeviceOrientationEvent.requestPermission === 'function') {
+const isChrome = /CriOS/.test(navigator.userAgent);
+const needsPermission = typeof DeviceOrientationEvent !== 'undefined' &&
+    typeof DeviceOrientationEvent.requestPermission === 'function' &&
+    !isChrome;
+
+if (needsPermission) {
+  // Safari iOS path
   const compassGranted = localStorage.getItem('compassPermission') === 'granted';
   if (compassGranted) {
     // Previously granted — start immediately, no dialog or overlay
     window.addEventListener('deviceorientation', handleOrientation, true);
     orientationPermissionGranted = true;
   } else {
-    // Try silently — Chrome resolves without dialog, Safari rejects outside gesture
+    // Try silently first — if it resolves without dialog great,
+    // if it rejects (outside gesture) show our tap overlay
     DeviceOrientationEvent.requestPermission()
       .then(response => {
         if (response === 'granted') {
-          // Chrome grants silently — start immediately
           window.addEventListener('deviceorientation', handleOrientation, true);
           orientationPermissionGranted = true;
           try { localStorage.setItem('compassPermission', 'granted'); } catch(e) {}
@@ -1624,12 +1629,12 @@ if (typeof DeviceOrientationEvent !== 'undefined' &&
         }
       })
       .catch(() => {
-        // Safari rejects outside gesture — show tap overlay for user gesture
+        // Rejected outside gesture — show tap overlay
         showTapOverlay();
       });
   }
 } else {
-  // Android / desktop — start immediately, no permission needed
+  // Chrome on iOS, Android, desktop — start immediately
   startOrientationListening();
 }
 
@@ -1646,10 +1651,8 @@ function showTapOverlay() {
 // Called from setMode() when hiking mode activates
 function checkCompassOnHikingStart() {
   smoothingActive = false;
-  browsingNeedleHeading = 0;  // reset so needle doesn't jump on mode switch
-  if (typeof DeviceOrientationEvent !== 'undefined' &&
-      typeof DeviceOrientationEvent.requestPermission === 'function' &&
-      !orientationPermissionGranted) {
+  browsingNeedleHeading = 0;
+  if (needsPermission && !orientationPermissionGranted) {
     showTapOverlay();
   }
 }
