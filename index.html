@@ -575,7 +575,7 @@
     </div>
   </div>
 
-  <div id="version-badge">v101</div>
+  <div id="version-badge">v102</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -1497,8 +1497,20 @@ function handleOrientation(e) {
   // Get raw heading regardless of mode
   let raw;
   if (typeof e.webkitCompassHeading === 'number' && e.webkitCompassHeading >= 0) {
-    // iOS — webkitCompassHeading is always true north, portrait-corrected by the OS
+    // iOS WebKit — webkitCompassHeading is true north referenced.
+    // GSA (Google Search App) may report 90° off due to its internal
+    // orientation handling — correct by subtracting screen rotation angle.
     raw = e.webkitCompassHeading;
+    const isGSA = /GSA/.test(ua);
+    if (isGSA) {
+      let screenAngle = 0;
+      if (screen.orientation && screen.orientation.angle !== undefined) {
+        screenAngle = screen.orientation.angle;
+      } else if (typeof window.orientation === 'number') {
+        screenAngle = window.orientation;
+      }
+      raw = ((raw - screenAngle) + 360) % 360;
+    }
   } else if (e.alpha != null) {
     // Android / Chromium (including Tesla) — alpha is CCW from north, convert to CW
     raw = (360 - e.alpha) % 360;
@@ -1596,29 +1608,41 @@ function startOrientationListening() {
 }
 
 // Compass permission:
-// Always try requestPermission() silently on load.
-// - Safari: if already granted, resolves immediately with no dialog.
-//           if not granted, rejects (outside gesture) → show tap overlay.
-// - GSA/Chrome iOS: also has requestPermission but resolves without dialog.
-// - Android/desktop: requestPermission doesn't exist → startOrientationListening directly.
+// Try requestPermission() silently on load.
+// - If already granted (localStorage cache): start immediately, no prompt.
+// - If resolves 'granted': save to localStorage, start listening.
+// - If rejects (outside gesture, not yet granted): show tap overlay.
+// - Android/desktop: no requestPermission → start directly.
 
 const ua = navigator.userAgent;
 
 if (typeof DeviceOrientationEvent !== 'undefined' &&
     typeof DeviceOrientationEvent.requestPermission === 'function') {
-  DeviceOrientationEvent.requestPermission()
-    .then(response => {
-      if (response === 'granted') {
-        window.addEventListener('deviceorientation', handleOrientation, true);
-        orientationPermissionGranted = true;
-      } else {
+  // Check localStorage first to avoid any prompt on return visits
+  try {
+    if (localStorage.getItem('compassPermission') === 'granted') {
+      window.addEventListener('deviceorientation', handleOrientation, true);
+      orientationPermissionGranted = true;
+    } else {
+      throw new Error('not cached');
+    }
+  } catch(e) {
+    // Not cached or localStorage unavailable — try silent requestPermission
+    DeviceOrientationEvent.requestPermission()
+      .then(response => {
+        if (response === 'granted') {
+          window.addEventListener('deviceorientation', handleOrientation, true);
+          orientationPermissionGranted = true;
+          try { localStorage.setItem('compassPermission', 'granted'); } catch(e2) {}
+        } else {
+          showTapOverlay();
+        }
+      })
+      .catch(() => {
+        // Rejected outside gesture — show tap overlay for user gesture
         showTapOverlay();
-      }
-    })
-    .catch(() => {
-      // Called outside gesture and not yet granted — show tap overlay
-      showTapOverlay();
-    });
+      });
+  }
 } else {
   // Android / desktop — start immediately
   startOrientationListening();
