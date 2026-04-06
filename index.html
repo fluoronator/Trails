@@ -577,7 +577,7 @@
     </div>
   </div>
 
-  <div id="version-badge">v99-debug</div>
+  <div id="version-badge">v99-debug2</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -1494,7 +1494,7 @@ function handleOrientation(e) {
   orientationEventCount++;
   if (orientationEventCount === 1) {
     showCompassBtn(false);
-    showToast(`Orient event! abs:${e.absolute} alpha:${Math.round(e.alpha)} wCH:${Math.round(e.webkitCompassHeading||0)}`, 6000);
+    dbgBadge(`GOT abs:${e.absolute} a:${Math.round(e.alpha||0)} wCH:${Math.round(e.webkitCompassHeading||0)}`);
   }
 
   // Get raw heading regardless of mode
@@ -1611,8 +1611,12 @@ const needsPermission = typeof DeviceOrientationEvent !== 'undefined' &&
     typeof DeviceOrientationEvent.requestPermission === 'function' &&
     !isChrome;
 
-// Debug — remove after testing
-showToast(`UA:${isChrome?'Chrome':'Other'} needsPerm:${needsPermission} DOE:${typeof DeviceOrientationEvent !== 'undefined'} RP:${typeof DeviceOrientationEvent?.requestPermission === 'function'}`, 8000);
+// Debug — update version badge with detection info
+function dbgBadge(msg) {
+  const el = document.getElementById('version-badge');
+  if (el) el.textContent = msg;
+}
+dbgBadge(`${isChrome?'CR':'OT'} np:${needsPermission} RP:${typeof DeviceOrientationEvent?.requestPermission==='function'}`);
 
 if (needsPermission) {
   // Safari iOS path
