@@ -73,14 +73,19 @@
     #top-bar {
       position: absolute;
       top: 0; left: 0; right: 0;
-      height: 56px;
+      /* Height accounts for iOS status bar (safe area) + content height.
+         env(safe-area-inset-top) = 0 on non-notch devices and in Chrome,
+         but equals the status bar height in Safari on notched iPhones. */
+      height: calc(56px + env(safe-area-inset-top));
       background: rgba(13,17,23,0.88);
       backdrop-filter: blur(10px);
       -webkit-backdrop-filter: blur(10px);
       border-bottom: 1px solid var(--border);
       display: flex;
-      align-items: center;
+      align-items: flex-end;  /* push content to bottom of bar, above safe area */
       padding: 0 12px;
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: 10px;
       gap: 10px;
     }
 
@@ -111,7 +116,7 @@
     /* ── NORTH ARROW (top-right, visible in hiking mode) ── */
     #north-arrow {
       position: absolute;
-      top: 66px; right: 12px;
+      top: calc(66px + env(safe-area-inset-top)); right: 12px;
       width: 48px; height: 48px;
       background: rgba(13,17,23,0.88);
       backdrop-filter: blur(8px);
@@ -128,7 +133,7 @@
     /* ── MAP CONTROLS (zoom + recenter) — below the compass ── */
     #map-controls {
       position: absolute;
-      top: 126px; right: 12px;
+      top: calc(126px + env(safe-area-inset-top)); right: 12px;
       display: flex;
       flex-direction: column;
       gap: 4px;
@@ -235,7 +240,7 @@
 
     #zoom-badge {
       position: absolute;
-      top: 102px; left: 12px;
+      top: calc(102px + env(safe-area-inset-top)); left: 12px;
       background: rgba(0,0,0,0.7);
       color: #fff;
       font-size: 12px;
@@ -399,7 +404,7 @@
     /* ── ZOOM BADGE ── */
     #zoom-badge {
       position: absolute;
-      top: 96px; left: 12px;
+      top: calc(96px + env(safe-area-inset-top)); left: 12px;
       background: rgba(0,0,0,0.7);
       color: #fff;
       font-size: 12px;
@@ -413,7 +418,7 @@
     /* ── VERSION BADGE ── */
     #version-badge {
       position: absolute;
-      top: 60px; left: 12px;
+      top: calc(60px + env(safe-area-inset-top)); left: 12px;
       background: #ff0080;
       color: #fff;
       font-size: 16px;
@@ -427,7 +432,7 @@
     /* ── STATUS TOAST ── */
     #status-toast {
       position: absolute;
-      top: 64px; left: 50%;
+      top: calc(64px + env(safe-area-inset-top)); left: 50%;
       transform: translateX(-50%);
       background: rgba(22,27,34,0.93);
       border: 1px solid var(--border);
@@ -570,7 +575,7 @@
     </div>
   </div>
 
-  <div id="version-badge">v94</div>
+  <div id="version-badge">v95</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
