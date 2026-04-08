@@ -559,7 +559,7 @@
     </div>
   </div>
 
-  <div id="version-badge">v97</div>
+  <div id="version-badge">v98</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -1471,28 +1471,16 @@ function startOrientationListening() {
   }
 }
 
-// iOS: check if permission is already granted before showing overlay.
-// Calling requestPermission() on load resolves silently if already granted —
-// Safari only shows a system dialog when called inside a user gesture and
-// permission hasn't been granted yet. On repeat visits this resolves
-// immediately to 'granted' with no dialog shown.
+// iOS compass permission:
+// requestPermission() MUST be called inside a user gesture in Safari.
+// Calling it outside a gesture always shows the system dialog, even on
+// return visits. So we never call it on load — we always show the tap
+// overlay first and call requestPermission() inside the tap handler.
+// Android/desktop: no permission needed, start immediately.
 if (typeof DeviceOrientationEvent !== 'undefined' &&
     typeof DeviceOrientationEvent.requestPermission === 'function') {
-  DeviceOrientationEvent.requestPermission()
-    .then(response => {
-      if (response === 'granted') {
-        // Already granted — start immediately, no dialog shown
-        window.addEventListener('deviceorientation', handleOrientation, true);
-        orientationPermissionGranted = true;
-      } else {
-        // Not yet granted — show tap overlay to get user gesture
-        showTapOverlay();
-      }
-    })
-    .catch(() => {
-      // Called outside user gesture and not yet granted — show tap overlay
-      showTapOverlay();
-    });
+  // iOS — show tap overlay, permission requested inside the tap gesture
+  showTapOverlay();
 } else {
   // Android / desktop — start immediately, no permission needed
   startOrientationListening();
