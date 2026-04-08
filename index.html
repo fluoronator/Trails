@@ -559,7 +559,7 @@
     </div>
   </div>
 
-  <div id="version-badge">v102</div>
+  <div id="version-badge">v103</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -1444,21 +1444,17 @@ function showCompassBtn(show) { /* replaced by tap overlay */ }
 function startOrientationListening() {
   if (typeof DeviceOrientationEvent !== 'undefined' &&
       typeof DeviceOrientationEvent.requestPermission === 'function') {
-    if (isChromeLike) {
-      // Chrome/GSA — permission not needed, just start listening
-      window.addEventListener('deviceorientation', handleOrientation, true);
-      orientationPermissionGranted = true;
-    } else {
-      // Safari — called inside tap gesture, requestPermission works here
-      DeviceOrientationEvent.requestPermission()
-        .then(response => {
-          if (response === 'granted') {
-            window.addEventListener('deviceorientation', handleOrientation, true);
-            orientationPermissionGranted = true;
-          }
-        })
-        .catch(err => console.warn('Compass permission error:', err));
-    }
+    // All iOS browsers need requestPermission() called inside a user gesture.
+    // Chrome/GSA resolve silently (no system dialog).
+    // Safari shows the system dialog.
+    DeviceOrientationEvent.requestPermission()
+      .then(response => {
+        if (response === 'granted') {
+          window.addEventListener('deviceorientation', handleOrientation, true);
+          orientationPermissionGranted = true;
+        }
+      })
+      .catch(err => console.warn('Compass permission error:', err));
   } else {
     // Android / desktop — no permission needed
     let gotAbsolute = false;
@@ -1482,8 +1478,6 @@ function startOrientationListening() {
 // Chrome/GSA resolve requestPermission() without showing a system dialog.
 // Safari shows the system dialog after the tap — unavoidable on iOS.
 // Android/desktop: no permission needed, start immediately.
-
-const isChromeLike = /CriOS|GSA/.test(navigator.userAgent);
 
 if (typeof DeviceOrientationEvent !== 'undefined' &&
     typeof DeviceOrientationEvent.requestPermission === 'function') {
