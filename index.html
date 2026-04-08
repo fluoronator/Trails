@@ -559,7 +559,7 @@
     </div>
   </div>
 
-  <div id="version-badge">v99</div>
+  <div id="version-badge">v101</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -1471,36 +1471,51 @@ function startOrientationListening() {
   }
 }
 
-// iOS compass permission strategy:
-// Safari: requestPermission() outside a gesture always shows the system
-//   dialog regardless of prior grants. Must show tap overlay first.
-// Chrome/GSA on iOS: requestPermission() resolves silently without any
-//   dialog even outside a gesture. Call it on load and it just works.
-// Android/desktop: no requestPermission needed at all.
+// iOS compass permission:
+// Call requestPermission() directly on load for all iOS browsers.
+// Safari will show the system dialog — this is unavoidable and is the
+// minimum possible interaction (one tap on the system dialog).
+// Chrome/GSA resolve silently without any dialog.
+// Android/desktop: no permission needed.
 
-const isSafari = /^((?!CriOS|GSA|Chrome|FxiOS).)*Safari/.test(navigator.userAgent);
+const isChromeLike = /CriOS|GSA/.test(navigator.userAgent);
 
 if (typeof DeviceOrientationEvent !== 'undefined' &&
     typeof DeviceOrientationEvent.requestPermission === 'function') {
-  if (isSafari) {
-    // Safari — must use tap overlay to get user gesture first
-    showTapOverlay();
-  } else {
-    // Chrome/GSA on iOS — silent call works without dialog
+  if (isChromeLike) {
+    // Chrome/GSA — resolves silently, no dialog
     DeviceOrientationEvent.requestPermission()
       .then(response => {
         if (response === 'granted') {
           window.addEventListener('deviceorientation', handleOrientation, true);
           orientationPermissionGranted = true;
-        } else {
-          showTapOverlay();
         }
       })
-      .catch(() => showTapOverlay());
+      .catch(() => {});
+  } else {
+    // Safari and unknown iOS browsers — system dialog appears, one tap
+    DeviceOrientationEvent.requestPermission()
+      .then(response => {
+        if (response === 'granted') {
+          window.addEventListener('deviceorientation', handleOrientation, true);
+          orientationPermissionGranted = true;
+        }
+      })
+      .catch(() => {});
   }
 } else {
   // Android / desktop — start immediately, no permission needed
   startOrientationListening();
+}
+
+function showTapOverlay() {
+  const overlay = document.getElementById('tap-overlay');
+  overlay.classList.remove('hidden');
+  overlay.addEventListener('click', function onTap() {
+    overlay.classList.add('hidden');
+    overlay.removeEventListener('click', onTap);
+    startOrientationListening();
+  }, { once: true });
 }
 
 function showTapOverlay() {
