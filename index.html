@@ -559,7 +559,7 @@
     </div>
   </div>
 
-  <div id="version-badge">v103</div>
+  <div id="version-badge">v104</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -1444,14 +1444,16 @@ function showCompassBtn(show) { /* replaced by tap overlay */ }
 function startOrientationListening() {
   if (typeof DeviceOrientationEvent !== 'undefined' &&
       typeof DeviceOrientationEvent.requestPermission === 'function') {
-    // All iOS browsers need requestPermission() called inside a user gesture.
-    // Chrome/GSA resolve silently (no system dialog).
-    // Safari shows the system dialog.
+    // All iOS browsers — called inside tap gesture
     DeviceOrientationEvent.requestPermission()
       .then(response => {
         if (response === 'granted') {
           window.addEventListener('deviceorientation', handleOrientation, true);
           orientationPermissionGranted = true;
+          // Cache for Chrome/GSA so tap overlay is skipped on return visits
+          if (isChromeLike) {
+            try { localStorage.setItem('compassGranted', '1'); } catch(e) {}
+          }
         }
       })
       .catch(err => console.warn('Compass permission error:', err));
@@ -1475,26 +1477,31 @@ function startOrientationListening() {
 // requestPermission() MUST be called inside a user gesture on all iOS
 // browsers — calling it outside a gesture silently fails or shows a
 // system dialog. The tap overlay provides the required user gesture.
-// Chrome/GSA resolve requestPermission() without showing a system dialog.
-// Safari shows the system dialog after the tap — unavoidable on iOS.
-// Android/desktop: no permission needed, start immediately.
+// iOS compass permission:
+// All iOS browsers need requestPermission() inside a user gesture.
+// Chrome/GSA resolve silently (no system dialog) and we cache the grant
+// in localStorage so the tap overlay is skipped on return visits.
+// Safari always requires the tap overlay + system dialog every session.
+// Android/desktop: no permission needed.
+
+const isChromeLike = /CriOS|GSA/.test(navigator.userAgent);
+const compassCached = (() => {
+  try { return localStorage.getItem('compassGranted') === '1'; } catch(e) { return false; }
+})();
 
 if (typeof DeviceOrientationEvent !== 'undefined' &&
     typeof DeviceOrientationEvent.requestPermission === 'function') {
-  showTapOverlay();
+  if (isChromeLike && compassCached) {
+    // Chrome/GSA previously granted — start directly, no overlay
+    window.addEventListener('deviceorientation', handleOrientation, true);
+    orientationPermissionGranted = true;
+  } else {
+    // First visit or Safari — show tap overlay
+    showTapOverlay();
+  }
 } else {
-  // Android / desktop — start immediately, no permission needed
+  // Android / desktop — start immediately
   startOrientationListening();
-}
-
-function showTapOverlay() {
-  const overlay = document.getElementById('tap-overlay');
-  overlay.classList.remove('hidden');
-  overlay.addEventListener('click', function onTap() {
-    overlay.classList.add('hidden');
-    overlay.removeEventListener('click', onTap);
-    startOrientationListening();
-  }, { once: true });
 }
 
 function showTapOverlay() {
