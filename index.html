@@ -561,7 +561,7 @@
     </div>
   </div>
 
-  <div id="version-badge">v108</div>
+  <div id="version-badge">v109</div>
   <div id="zoom-badge"></div>
 
   <div id="status-toast" class="hidden">Ready</div>
@@ -1198,7 +1198,9 @@ function startGeolocation() {
 document.getElementById('go-to-park-btn').addEventListener('click', () => {
   S.isTracking = false;
   document.getElementById('go-to-park-btn').classList.add('hidden');
-  if (S.parkBounds && S.parkBounds.isValid()) {
+  if (S.parkCenter) {
+    map.setView(S.parkCenter, S.defaultZoom, { animate: true });
+  } else if (S.parkBounds && S.parkBounds.isValid()) {
     map.fitBounds(S.parkBounds, { padding: [50,50], animate: true });
   }
 });
